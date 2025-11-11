@@ -27,7 +27,7 @@ const testLogin = async () => {
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36');
     
     console.log('🌐 Navigating to eLocal login page...');
-    await page.goto('https://www.elocal.com/partner_users/login', { waitUntil: 'networkidle2' });
+    await page.goto('https://www.elocal.com/partner_users/login', { waitUntil: 'networkidle0' });
     
     console.log('📸 Taking screenshot of login page...');
     await page.screenshot({ path: 'login-page.png' });
@@ -35,7 +35,7 @@ const testLogin = async () => {
     console.log('🔍 Looking for login form elements...');
     
     // Wait a bit for the page to load
-    await page.waitForTimeout(3000);
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
     // Check what elements are available
     const loginElements = await page.evaluate(() => {

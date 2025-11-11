@@ -27,7 +27,7 @@ const testCampaignsPage = async () => {
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36');
     
     console.log('🌐 Navigating to login page...');
-    await page.goto('https://www.elocal.com/partner_users/login', { waitUntil: 'networkidle2' });
+    await page.goto('https://www.elocal.com/partner_users/login', { waitUntil: 'networkidle0' });
     
     console.log('📝 Logging in...');
     await page.waitForSelector('input[name="partner_user[username]"]', { timeout: 10000 });
@@ -40,7 +40,21 @@ const testCampaignsPage = async () => {
     await passwordField.type(process.env.ELOCAL_PASSWORD);
     await submitButton.click();
     
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
+    // Wait for navigation (Puppeteer 24: wait for URL change)
+    const startUrl = page.url();
+    await new Promise((resolve) => {
+      const checkUrl = setInterval(() => {
+        const currentUrl = page.url();
+        if (currentUrl !== startUrl && !currentUrl.includes('login')) {
+          clearInterval(checkUrl);
+          resolve();
+        }
+      }, 100);
+      setTimeout(() => {
+        clearInterval(checkUrl);
+        resolve();
+      }, 15000);
+    });
     console.log(`✅ Logged in! Current URL: ${page.url()}`);
     
     console.log('📸 Taking screenshot of dashboard...');
@@ -49,7 +63,7 @@ const testCampaignsPage = async () => {
     console.log('🔍 Looking for campaigns...');
     
     // Wait a bit for the page to load
-    await page.waitForTimeout(3000);
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
     // Look for campaign elements
     const campaignElements = await page.evaluate(() => {

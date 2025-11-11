@@ -43,7 +43,7 @@ const navigateWithRetry = (page) => (url) => (maxRetries) =>
       let lastError;
       for (let i = 0; i < maxRetries; i++) {
         try {
-          await page.goto(url, { waitUntil: 'networkidle2' });
+          await page.goto(url, { waitUntil: 'networkidle0' });
           return page;
         } catch (error) {
           lastError = error;
@@ -73,7 +73,7 @@ const clickElement = (page) => (selector) => (maxRetries) =>
         try {
           await page.waitForSelector(selector, { timeout: 5000 });
           await page.click(selector);
-          await page.waitForTimeout(1000); // Wait for navigation/loading
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for navigation/loading
           return true;
         } catch (error) {
           lastError = error;
@@ -128,7 +128,7 @@ const loginToElocal = (page) => (config) =>
   TE.tryCatch(
     async () => {
       // Navigate to the correct login page
-      await page.goto(`${config.elocalBaseUrl}/partner_users/login`, { waitUntil: 'networkidle2' });
+      await page.goto(`${config.elocalBaseUrl}/partner_users/login`, { waitUntil: 'networkidle0' });
       
       // Wait for login form to load
       await page.waitForSelector('input[name="partner_user[username]"]', { timeout: 10000 });
@@ -162,8 +162,24 @@ const loginToElocal = (page) => (config) =>
       // Submit form
       await submitButton.click();
       
-      // Wait for navigation to dashboard
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
+      // Wait for navigation to dashboard (Puppeteer 24: wait for URL change or timeout)
+      const startUrl = page.url();
+      await new Promise((resolve) => {
+        const checkUrl = setInterval(() => {
+          const currentUrl = page.url();
+          if (currentUrl !== startUrl && !currentUrl.includes('login')) {
+            clearInterval(checkUrl);
+            resolve();
+          }
+        }, 100);
+        setTimeout(() => {
+          clearInterval(checkUrl);
+          resolve(); // Resolve after timeout even if URL hasn't changed
+        }, 15000);
+      });
+      
+      // Additional wait for page to stabilize
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Verify we're logged in by checking URL or page content
       const currentUrl = page.url();
@@ -181,7 +197,7 @@ const loginToElocal = (page) => (config) =>
 const navigateToCampaigns = (page) => (config) =>
   TE.tryCatch(
     async () => {
-      await page.goto(`${config.elocalBaseUrl}/partner_users`, { waitUntil: 'networkidle2' });
+      await page.goto(`${config.elocalBaseUrl}/partner_users`, { waitUntil: 'networkidle0' });
       await page.waitForSelector('table', { timeout: 10000 });
       return page;
     },
@@ -210,7 +226,7 @@ const exportCallsToCSV = (page) => (config) =>
   TE.tryCatch(
     async () => {
       // Wait for the page to fully load
-      await page.waitForTimeout(2000);
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Use evaluate to find the button by text content and get its index/selector
       const buttonInfo = await page.evaluate(() => {
@@ -253,7 +269,7 @@ const exportCallsToCSV = (page) => (config) =>
       console.log('Clicked Export Calls button');
       
       // Wait for download to start (check for file)
-      await page.waitForTimeout(3000);
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       return { success: true, message: 'Export button clicked successfully' };
     },
@@ -316,7 +332,7 @@ const setDateRange = (page) => (dateRange) => {
   return TE.tryCatch(
     async () => {
       // Wait for page to load
-      await page.waitForTimeout(2000);
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       console.log(`Setting date range: ${dateRange.startDateFormatted} to ${dateRange.endDateFormatted}`);
       
@@ -434,7 +450,7 @@ const setDateRange = (page) => (dateRange) => {
       
       // If we set dates, wait for page to update
       if (dateSet) {
-        await page.waitForTimeout(2000);
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
         // Try to trigger form submission or filter if there's a submit button
         // Find and click apply/submit button by text content
@@ -453,7 +469,7 @@ const setDateRange = (page) => (dateRange) => {
         });
         
         if (submitClicked) {
-          await page.waitForTimeout(2000);
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       } else {
         console.log('⚠️  Could not automatically set date range. The page may already have default dates or requires manual selection.');
@@ -485,7 +501,7 @@ const navigateToCampaignResults = (page) => (config) => (dateRange) =>
       console.log(`URL: ${url}`);
       
       // Navigate directly to the URL with date parameters
-      await page.goto(url, { waitUntil: 'networkidle2' });
+      await page.goto(url, { waitUntil: 'networkidle0' });
       
       // Wait for the table to load
       await page.waitForSelector('table', { timeout: 10000 });
