@@ -1,0 +1,64 @@
+# eLocal Scraper Services - Cron Jobs Configuration
+# 
+# To install these cron jobs:
+# 1. Copy this file: cp crontab.example crontab.local
+# 2. Edit crontab.local and update PROJECT_DIR and NODE_PATH if needed
+# 3. Install: crontab crontab.local
+# 4. View: crontab -l
+# 5. Remove: crontab -r
+#
+# All times are in IST (Indian Standard Time - Asia/Kolkata)
+# Cron format: minute hour day month weekday command
+#
+# Timezone: Set TZ=Asia/Kolkata for IST
+# Logs: Output will be logged to logs/cron-*.log
+
+# Set environment variables
+PROJECT_DIR=/Users/rajeev/Desktop/adstia/elocal
+NODE_PATH=/Users/rajeev/.nvm/versions/node/v18.20.4/bin/node
+PATH=/usr/local/bin:/usr/bin:/bin
+TZ=Asia/Kolkata
+
+# Log file directory
+LOG_DIR=$PROJECT_DIR/logs
+mkdir -p $LOG_DIR
+
+# ============================================================================
+# 1. AUTH REFRESH SERVICE
+# ============================================================================
+# Schedule: Once a week on Sunday at 2:00 AM IST
+# Cron: 0 2 * * 0
+# ============================================================================
+0 2 * * 0 cd $PROJECT_DIR && $NODE_PATH src/index.js refresh-auth >> $LOG_DIR/cron-auth-refresh.log 2>&1
+
+# ============================================================================
+# 2. HISTORICAL DATA SERVICE
+# ============================================================================
+# Schedule: Daily at 12:00 AM IST (midnight)
+# Cron: 0 0 * * *
+# ============================================================================
+0 0 * * * cd $PROJECT_DIR && $NODE_PATH src/index.js historical >> $LOG_DIR/cron-historical.log 2>&1
+
+# ============================================================================
+# 3. CURRENT DAY SERVICE
+# ============================================================================
+# Schedule: Every 3 hours from 9 PM to 6 AM IST (21:00, 00:00, 03:00, 06:00)
+# Cron: 0 21,0,3,6 * * *
+# Note: This runs at 9 PM, 12 AM, 3 AM, and 6 AM IST
+# ============================================================================
+0 21,0,3,6 * * * cd $PROJECT_DIR && $NODE_PATH src/index.js current >> $LOG_DIR/cron-current.log 2>&1
+
+# ============================================================================
+# 4. RINGBA SYNC SERVICE
+# ============================================================================
+# Schedule: Daily at 6:00 AM IST
+# Cron: 0 6 * * *
+# ============================================================================
+0 6 * * * cd $PROJECT_DIR && $NODE_PATH src/index.js ringba-sync >> $LOG_DIR/cron-ringba-sync.log 2>&1
+
+# ============================================================================
+# OPTIONAL: Run all services together (alternative to individual services)
+# ============================================================================
+# Uncomment the line below if you want to run all services together
+# 0 0 * * * cd $PROJECT_DIR && $NODE_PATH src/index.js run-all >> $LOG_DIR/cron-run-all.log 2>&1
+

@@ -1,0 +1,42 @@
+{
+  "name": "elocal-scraper",
+  "version": "1.0.0",
+  "description": "Functional programming Node.js service to scrape eLocal.com campaign data",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "scrape": "node src/index.js scrape",
+    "run-all": "node src/index.js run-all",
+    "all": "node src/index.js run-all",
+    "historical": "node src/index.js historical",
+    "current": "node src/index.js current",
+    "multi": "node src/index.js multi-scheduler",
+    "schedule": "node src/index.js scheduler",
+    "refresh-auth": "node src/index.js refresh-auth",
+    "ringba-sync": "node src/index.js ringba-sync",
+    "ringba-logs": "node src/index.js ringba-logs",
+    "dashboard": "node dashboard-server.js",
+    "dev": "node --watch src/index.js",
+    "test": "node test.js",
+    "test:unit": "node --test",
+    "setup": "node setup.js"
+  },
+  "keywords": ["scraping", "automation", "functional-programming", "elocal"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "puppeteer": "^21.5.2",
+    "sqlite3": "^5.1.6",
+    "better-sqlite3": "^9.2.2",
+    "dotenv": "^16.3.1",
+    "ramda": "^0.29.1",
+    "fp-ts": "^2.16.1",
+    "io-ts": "^2.2.20",
+    "node-cron": "^3.0.3",
+    "cheerio": "1.0.0-rc.12"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  }
+}

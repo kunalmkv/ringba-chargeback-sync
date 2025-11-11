@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eLocal Scraper Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <h1>📊 eLocal Scraper Dashboard</h1>
+                <div class="header-actions">
+                    <button id="refreshBtn" class="btn btn-primary">🔄 Refresh</button>
+                    <div class="status-indicator" id="statusIndicator">
+                        <span class="status-dot"></span>
+                        <span id="statusText">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="dashboard-main">
+            <!-- Service Health Status -->
+            <section class="section health-section">
+                <h2>🏥 Service Health Status</h2>
+                <div class="health-grid" id="healthGrid">
+                    <div class="health-card">
+                        <div class="health-icon">📅</div>
+                        <div class="health-info">
+                            <h3>Historical Service</h3>
+                            <p class="health-status" id="historicalStatus">Checking...</p>
+                            <p class="health-time" id="historicalTime">-</p>
+                        </div>
+                    </div>
+                    <div class="health-card">
+                        <div class="health-icon">⚡</div>
+                        <div class="health-info">
+                            <h3>Current Day Service</h3>
+                            <p class="health-status" id="currentStatus">Checking...</p>
+                            <p class="health-time" id="currentTime">-</p>
+                        </div>
+                    </div>
+                    <div class="health-card">
+                        <div class="health-icon">🔄</div>
+                        <div class="health-info">
+                            <h3>Ringba Sync</h3>
+                            <p class="health-status" id="ringbaStatus">Checking...</p>
+                            <p class="health-time" id="ringbaTime">-</p>
+                        </div>
+                    </div>
+                    <div class="health-card">
+                        <div class="health-icon">🔐</div>
+                        <div class="health-info">
+                            <h3>Auth Service</h3>
+                            <p class="health-status" id="authStatus">Active</p>
+                            <p class="health-time">Session valid</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Statistics Overview -->
+            <section class="section stats-section">
+                <h2>📈 Statistics Overview</h2>
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card">
+                        <div class="stat-icon">📞</div>
+                        <div class="stat-content">
+                            <h3 id="totalCalls">0</h3>
+                            <p>Total Calls</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">💰</div>
+                        <div class="stat-content">
+                            <h3 id="totalPayout">$0.00</h3>
+                            <p>Total Payout</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-content">
+                            <h3 id="totalAdjustments">0</h3>
+                            <p>Total Adjustments</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-content">
+                            <h3 id="successRate">0%</h3>
+                            <p>Success Rate</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📅</div>
+                        <div class="stat-content">
+                            <h3 id="callsToday">0</h3>
+                            <p>Calls Today</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📆</div>
+                        <div class="stat-content">
+                            <h3 id="callsThisWeek">0</h3>
+                            <p>Calls This Week</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Ringba Sync Status -->
+            <section class="section ringba-section">
+                <h2>🔄 Ringba Sync Status</h2>
+                <div class="ringba-stats" id="ringbaStats">
+                    <div class="ringba-stat">
+                        <span class="ringba-label">Total Synced:</span>
+                        <span class="ringba-value" id="ringbaTotal">0</span>
+                    </div>
+                    <div class="ringba-stat">
+                        <span class="ringba-label">Successful:</span>
+                        <span class="ringba-value success" id="ringbaSuccess">0</span>
+                    </div>
+                    <div class="ringba-stat">
+                        <span class="ringba-label">Failed:</span>
+                        <span class="ringba-value error" id="ringbaFailed">0</span>
+                    </div>
+                    <div class="ringba-stat">
+                        <span class="ringba-label">Pending:</span>
+                        <span class="ringba-value warning" id="ringbaPending">0</span>
+                    </div>
+                    <div class="ringba-stat">
+                        <span class="ringba-label">Success Rate:</span>
+                        <span class="ringba-value" id="ringbaSuccessRate">0%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Service History -->
+            <section class="section history-section">
+                <h2>📜 Service History</h2>
+                <div class="history-controls">
+                    <select id="serviceFilter" class="filter-select">
+                        <option value="">All Services</option>
+                        <option value="historical">Historical Service</option>
+                        <option value="current">Current Day Service</option>
+                    </select>
+                    <input type="number" id="historyLimit" class="limit-input" value="20" min="1" max="100">
+                </div>
+                <div class="history-table-container">
+                    <table class="history-table" id="historyTable">
+                        <thead>
+                            <tr>
+                                <th>Session ID</th>
+                                <th>Service</th>
+                                <th>Started At</th>
+                                <th>Completed At</th>
+                                <th>Status</th>
+                                <th>Calls Scraped</th>
+                                <th>Adjustments</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                            <tr>
+                                <td colspan="7" class="loading">Loading history...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Recent Activity -->
+            <section class="section activity-section">
+                <h2>🕐 Recent Activity</h2>
+                <div class="activity-tabs">
+                    <button class="tab-btn active" data-tab="calls">Recent Calls</button>
+                    <button class="tab-btn" data-tab="adjustments">Recent Adjustments</button>
+                    <button class="tab-btn" data-tab="sessions">Recent Sessions</button>
+                </div>
+                <div class="activity-content">
+                    <div class="tab-content active" id="callsTab">
+                        <table class="activity-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Caller ID</th>
+                                    <th>Payout</th>
+                                    <th>Created At</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentCallsBody">
+                                <tr><td colspan="4" class="loading">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="tab-content" id="adjustmentsTab">
+                        <table class="activity-table">
+                            <thead>
+                                <tr>
+                                    <th>Time of Call</th>
+                                    <th>Caller ID</th>
+                                    <th>Amount</th>
+                                    <th>Created At</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentAdjustmentsBody">
+                                <tr><td colspan="4" class="loading">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="tab-content" id="sessionsTab">
+                        <table class="activity-table">
+                            <thead>
+                                <tr>
+                                    <th>Session ID</th>
+                                    <th>Status</th>
+                                    <th>Started At</th>
+                                    <th>Calls</th>
+                                    <th>Adjustments</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentSessionsBody">
+                                <tr><td colspan="5" class="loading">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Top Callers -->
+            <section class="section top-callers-section">
+                <h2>👥 Top Callers</h2>
+                <div class="top-callers-table-container">
+                    <table class="top-callers-table" id="topCallersTable">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Caller ID</th>
+                                <th>Call Count</th>
+                                <th>Total Payout</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topCallersBody">
+                            <tr>
+                                <td colspan="4" class="loading">Loading top callers...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="dashboard-footer">
+            <p>Last updated: <span id="lastUpdated">-</span></p>
+            <p>Auto-refresh: <span id="autoRefreshStatus">Enabled</span> (30s)</p>
+        </footer>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
+
