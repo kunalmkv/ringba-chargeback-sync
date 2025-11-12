@@ -17,6 +17,7 @@
     "ringba-sync": "node src/index.js ringba-sync",
     "ringba-logs": "node src/index.js ringba-logs",
     "dashboard": "node dashboard-server.js",
+    "dashboard:pm2": "pm2 start ecosystem.config.js",
     "dashboard:dev": "cd dashboard-react && npm run dev",
     "dashboard:build": "cd dashboard-react && npm install && npm run build",
     "dev": "node --watch src/index.js",
