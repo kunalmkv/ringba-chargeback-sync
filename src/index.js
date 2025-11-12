@@ -352,11 +352,11 @@ const main = async () => {
       const config = createConfig();
       console.log('[INFO] Starting multi-scheduler service...');
       console.log('[INFO] This will run:');
-      console.log('  - Historical data service: Every 5 minutes (past 10 days, STATIC category)');
-      console.log('  - Current day service: Every 5 minutes (current day only, STATIC category)');
+      console.log('  - Historical data service: Daily at 12:00 AM IST (midnight) - past 10 days, STATIC category');
+      console.log('  - Current day service: Every 3 hours from 9 PM to 6 AM IST (21:00, 00:00, 03:00, 06:00) - STATIC category');
       console.log('  - Auth refresh: Once a week on Sunday at 2:00 AM IST');
       if (config.ringbaSyncEnabled && config.ringbaAccountId && config.ringbaApiToken) {
-        console.log('  - Ringba sync: Every 5 minutes (all categories)');
+        console.log('  - Ringba sync: Daily at 6:00 AM IST (all categories)');
       }
       
       const result = await TE.getOrElse(() => {

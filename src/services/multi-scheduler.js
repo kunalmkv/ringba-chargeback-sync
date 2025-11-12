@@ -57,10 +57,10 @@ export class MultiScheduler {
     return E.right(this);
   }
 
-  // Schedule historical data service (runs every 5 minutes for testing)
+  // Schedule historical data service (runs daily at 12:00 AM IST - midnight)
   scheduleHistoricalService() {
     const serviceInfo = getServiceInfo('historical');
-    const cronExpression = '*/5 * * * *'; // Every 5 minutes
+    const cronExpression = '0 0 * * *'; // Daily at 12:00 AM (midnight) IST
     
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for historical service: ${cronExpression}`));
@@ -89,7 +89,7 @@ export class MultiScheduler {
     this.logger.info('Historical service scheduled', {
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Every 5 minutes (for testing)',
+      schedule: 'Daily at 12:00 AM IST (midnight)',
       description: serviceInfo.description,
       dateRange: `${serviceInfo.dateRange.startDateFormatted} to ${serviceInfo.dateRange.endDateFormatted}`
     });
@@ -97,10 +97,10 @@ export class MultiScheduler {
     return E.right(task);
   }
 
-  // Schedule current day service (runs every 5 minutes for testing)
+  // Schedule current day service (runs every 3 hours from 9 PM to 6 AM IST)
   scheduleCurrentDayService() {
     const serviceInfo = getServiceInfo('current');
-    const cronExpression = '*/5 * * * *'; // Every 5 minutes
+    const cronExpression = '0 21,0,3,6 * * *'; // Every 3 hours: 9 PM, 12 AM, 3 AM, 6 AM IST
     
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for current day service: ${cronExpression}`));
@@ -129,7 +129,7 @@ export class MultiScheduler {
     this.logger.info('Current day service scheduled', {
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Every 5 minutes (for testing)',
+      schedule: 'Every 3 hours from 9 PM to 6 AM IST (21:00, 00:00, 03:00, 06:00)',
       description: serviceInfo.description,
       dateRange: `${serviceInfo.dateRange.startDateFormatted} to ${serviceInfo.dateRange.endDateFormatted}`
     });
@@ -177,14 +177,14 @@ export class MultiScheduler {
     return E.right(task);
   }
 
-  // Schedule Ringba sync service (runs every 5 minutes for testing)
+  // Schedule Ringba sync service (runs daily at 6:00 AM IST)
   scheduleRingbaSync() {
     if (!this.config.ringbaSyncEnabled || !this.config.ringbaAccountId || !this.config.ringbaApiToken) {
       this.logger.info('Ringba sync skipped: not enabled or credentials missing');
       return E.right(null);
     }
 
-    const cronExpression = '*/5 * * * *'; // Every 5 minutes
+    const cronExpression = '0 6 * * *'; // Daily at 6:00 AM IST
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for Ringba sync: ${cronExpression}`));
     }
@@ -211,7 +211,7 @@ export class MultiScheduler {
     this.logger.info('Ringba sync scheduled', { 
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Every 5 minutes (for testing)'
+      schedule: 'Daily at 6:00 AM IST'
     });
     return E.right(task);
   }
