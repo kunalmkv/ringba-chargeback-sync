@@ -11,6 +11,8 @@
     "all": "node src/index.js run-all",
     "historical": "node src/index.js historical",
     "current": "node src/index.js current",
+    "historical-api": "node src/index.js historical-api",
+    "current-api": "node src/index.js current-api",
     "multi": "node src/index.js multi-scheduler",
     "schedule": "node src/index.js scheduler",
     "refresh-auth": "node src/index.js refresh-auth",

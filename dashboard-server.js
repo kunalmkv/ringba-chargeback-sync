@@ -71,10 +71,10 @@ const routes = {
         LIMIT 1
       `).get();
 
-      // Get Ringba sync status
+      // Get Ringba sync status - use sync_completed_at if available, otherwise use the most recent log entry
       const lastRingbaSync = db.prepare(`
         SELECT * FROM ringba_sync_logs 
-        ORDER BY sync_attempted_at DESC 
+        ORDER BY sync_completed_at DESC, id DESC 
         LIMIT 1
       `).get();
 
@@ -105,7 +105,8 @@ const routes = {
             lastStatus: lastCurrent?.status || 'unknown'
           },
           ringba: {
-            lastRun: lastRingbaSync?.sync_attempted_at || null,
+            lastRun: lastRingbaSync?.sync_completed_at || lastRingbaSync?.sync_attempted_at || null,
+            status: lastRingbaSync?.sync_status || 'unknown',
             lastStatus: lastRingbaSync?.sync_status || 'unknown'
           }
         },
@@ -150,15 +151,29 @@ const routes = {
         WHERE DATE(date_of_call) >= DATE('now', '-7 days')
       `).get();
 
-      // Ringba sync stats
+      // Ringba sync stats - get recent stats (last 24 hours) and overall stats
+      const ringbaStatsRecent = db.prepare(`
+        SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN sync_status = 'success' THEN 1 ELSE 0 END) as success,
+          SUM(CASE WHEN sync_status = 'failed' THEN 1 ELSE 0 END) as failed,
+          SUM(CASE WHEN sync_status = 'pending' OR sync_status = 'not_found' OR sync_status = 'cannot_sync' THEN 1 ELSE 0 END) as pending,
+          MAX(sync_completed_at) as last_sync_time
+        FROM ringba_sync_logs
+        WHERE sync_completed_at >= DATETIME('now', '-24 hours')
+      `).get();
+      
       const ringbaStats = db.prepare(`
         SELECT 
           COUNT(*) as total,
           SUM(CASE WHEN sync_status = 'success' THEN 1 ELSE 0 END) as success,
           SUM(CASE WHEN sync_status = 'failed' THEN 1 ELSE 0 END) as failed,
-          SUM(CASE WHEN sync_status = 'pending' THEN 1 ELSE 0 END) as pending
+          SUM(CASE WHEN sync_status = 'pending' OR sync_status = 'not_found' OR sync_status = 'cannot_sync' THEN 1 ELSE 0 END) as pending
         FROM ringba_sync_logs
       `).get();
+      
+      // Use recent stats if available, otherwise use overall stats
+      const finalRingbaStats = ringbaStatsRecent.total > 0 ? ringbaStatsRecent : ringbaStats;
 
       // Recent activity (last 24 hours)
       const recentActivity = db.prepare(`
@@ -184,13 +199,14 @@ const routes = {
         callsThisWeek: callsThisWeek.count || 0,
         recentActivity: recentActivity.count || 0,
         ringba: {
-          total: ringbaStats.total || 0,
-          success: ringbaStats.success || 0,
-          failed: ringbaStats.failed || 0,
-          pending: ringbaStats.pending || 0,
-          successRate: ringbaStats.total > 0 
-            ? ((ringbaStats.success / ringbaStats.total) * 100).toFixed(2)
-            : 0
+          total: finalRingbaStats.total || 0,
+          success: finalRingbaStats.success || 0,
+          failed: finalRingbaStats.failed || 0,
+          pending: finalRingbaStats.pending || 0,
+          successRate: finalRingbaStats.total > 0 
+            ? ((finalRingbaStats.success / finalRingbaStats.total) * 100).toFixed(2)
+            : 0,
+          lastSyncTime: finalRingbaStats.last_sync_time || null
         },
         topCallers: topCallers
       });
@@ -337,20 +353,70 @@ const routes = {
     }
   },
 
+  // Diagnostic endpoint
+  '/api/debug': (req, res) => {
+    const buildDir = path.join(__dirname, 'dashboard-build');
+    const buildPath = path.join(buildDir, 'index.html');
+    const assetsDir = path.join(buildDir, 'assets');
+    
+    const debug = {
+      server: {
+        port: PORT,
+        workingDir: __dirname,
+        nodeVersion: process.version
+      },
+      build: {
+        exists: fs.existsSync(buildDir),
+        path: buildDir,
+        indexHtmlExists: fs.existsSync(buildPath),
+        indexHtmlPath: buildPath,
+        assetsDirExists: fs.existsSync(assetsDir),
+        assetsDirPath: assetsDir
+      },
+      files: {}
+    };
+    
+    if (fs.existsSync(buildDir)) {
+      try {
+        const files = fs.readdirSync(buildDir);
+        debug.files.root = files;
+        
+        if (fs.existsSync(assetsDir)) {
+          const assetFiles = fs.readdirSync(assetsDir);
+          debug.files.assets = assetFiles;
+        }
+      } catch (error) {
+        debug.files.error = error.message;
+      }
+    }
+    
+    sendJSON(res, debug);
+  },
+
   // Serve React build or fallback to HTML (handle both root and prefixed paths)
   // Nginx rewrites /ringba-sync-dashboard/ to /, so we serve on root
   '/': (req, res) => {
     const buildPath = path.join(__dirname, 'dashboard-build', 'index.html');
     const fallbackPath = path.join(__dirname, 'dashboard.html');
     
+    console.log('[ROOT] Serving dashboard:', {
+      buildPath,
+      buildExists: fs.existsSync(buildPath),
+      fallbackExists: fs.existsSync(fallbackPath)
+    });
+    
     // Try React build first, fallback to old HTML
     if (fs.existsSync(buildPath)) {
+      const html = fs.readFileSync(buildPath, 'utf8');
+      console.log('[ROOT] Serving React build, length:', html.length);
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(fs.readFileSync(buildPath));
+      res.end(html);
     } else if (fs.existsSync(fallbackPath)) {
+      console.log('[ROOT] Serving fallback HTML');
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(fs.readFileSync(fallbackPath));
     } else {
+      console.error('[ROOT] Neither build nor fallback exists!');
       sendError(res, 'Dashboard not found', 404);
     }
   }
@@ -434,10 +500,18 @@ const server = http.createServer((req, res) => {
           '.ttf': 'font/ttf'
         }[ext] || 'application/octet-stream';
         
-        res.writeHead(200, { 'Content-Type': contentType });
+        console.log(`[ASSET] Serving: ${pathname} -> ${fullPath} (${contentType})`);
+        res.writeHead(200, { 
+          'Content-Type': contentType,
+          'Cache-Control': 'public, max-age=31536000, immutable'
+        });
         res.end(fs.readFileSync(fullPath));
         return;
+      } else {
+        console.warn(`[ASSET] File not found: ${pathname} -> ${fullPath}`);
       }
+    } else {
+      console.warn(`[ASSET] Build directory not found: ${buildDir}`);
     }
     
     console.warn(`[WARN] Route not found: ${pathname}`);

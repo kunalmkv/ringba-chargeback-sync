@@ -178,7 +178,8 @@ const toE164 = (raw) => {
 };
 
 // Find call by callerId and time window using Ringba Call Logs API
-export const findCallByCallerIdAndTime = (accountId, apiToken) => (callerId, callDate, windowMinutes = 60) =>
+// Optionally matches by payout value to ensure correct call identification
+export const findCallByCallerIdAndTime = (accountId, apiToken) => (callerId, callDate, windowMinutes = 60, expectedPayout = null) =>
   TE.tryCatch(
     async () => {
       const e164Phone = toE164(callerId);
@@ -201,7 +202,7 @@ export const findCallByCallerIdAndTime = (accountId, apiToken) => (callerId, cal
         reportStart: start.toISOString(),
         reportEnd: end.toISOString(),
         offset: 0,
-        size: 10, // Get multiple to find closest match
+        size: 20, // Get more records to find best match by payout
         orderByColumns: [
           { column: 'callDt', direction: 'desc' }
         ],
@@ -245,10 +246,90 @@ export const findCallByCallerIdAndTime = (accountId, apiToken) => (callerId, cal
         return null; // No call found
       }
 
-      // Find closest match by time
+      // If expectedPayout is provided, fetch payout details for all matching calls
+      // and match by payout first, then by time
+      const targetTime = callDt.getTime();
+      const payoutTolerance = 0.01; // Allow 1 cent difference for floating point precision
+      const expectedPayoutNum = expectedPayout !== null ? Number(expectedPayout) : null;
+
+      if (expectedPayoutNum !== null && !isNaN(expectedPayoutNum)) {
+        console.log(`[Ringba] Matching by payout: expected=$${expectedPayoutNum}, found ${records.length} calls`);
+        
+        // Fetch payout details for all matching calls
+        const callsWithPayout = [];
+        for (const record of records) {
+          try {
+            const detailsEither = await getCallDetails(accountId, apiToken)(record.inboundCallId)();
+            if (detailsEither._tag === 'Right') {
+              const details = detailsEither.right;
+              const recordTime = new Date(record.callDt).getTime();
+              const timeDiff = Math.abs(recordTime - targetTime);
+              const payoutDiff = Math.abs(details.payout - expectedPayoutNum);
+              
+              callsWithPayout.push({
+                record,
+                details,
+                timeDiff,
+                payoutDiff,
+                payoutMatch: payoutDiff <= payoutTolerance
+              });
+            }
+          } catch (error) {
+            console.warn(`[Ringba] Could not fetch details for ${record.inboundCallId}: ${error.message}`);
+            // Continue with other calls
+          }
+        }
+
+        if (callsWithPayout.length === 0) {
+          console.warn(`[Ringba] Could not fetch payout details for any matching calls`);
+          // Fall back to time-based matching
+        } else {
+          // Prioritize: exact payout match first, then closest payout, then closest time
+          callsWithPayout.sort((a, b) => {
+            // First: exact payout matches
+            if (a.payoutMatch && !b.payoutMatch) return -1;
+            if (!a.payoutMatch && b.payoutMatch) return 1;
+            
+            // Second: closest payout (if both match or both don't match)
+            if (a.payoutMatch && b.payoutMatch) {
+              // Both match payout - prefer closer time
+              return a.timeDiff - b.timeDiff;
+            } else {
+              // Neither matches payout exactly - prefer closer payout
+              const payoutDiff = a.payoutDiff - b.payoutDiff;
+              if (Math.abs(payoutDiff) > payoutTolerance) {
+                return payoutDiff;
+              }
+              // If payout difference is similar, prefer closer time
+              return a.timeDiff - b.timeDiff;
+            }
+          });
+
+          const bestMatch = callsWithPayout[0];
+          const payoutMatchInfo = bestMatch.payoutMatch 
+            ? `exact payout match ($${bestMatch.details.payout})`
+            : `payout diff=$${bestMatch.payoutDiff.toFixed(2)} (Ringba=$${bestMatch.details.payout}, expected=$${expectedPayoutNum})`;
+          
+          console.log(`[Ringba] Best match: ${bestMatch.record.inboundCallId} - ${payoutMatchInfo}, time diff=${Math.round(bestMatch.timeDiff / 60000)} min`);
+
+          return {
+            inboundCallId: bestMatch.record.inboundCallId,
+            callDt: bestMatch.record.callDt,
+            callerId: bestMatch.record['tag:InboundNumber:Number'] || e164Phone,
+            inboundPhoneNumber: bestMatch.record.inboundPhoneNumber,
+            timeDiffMinutes: Math.round(bestMatch.timeDiff / 60000),
+            payout: bestMatch.details.payout,
+            payoutMatch: bestMatch.payoutMatch,
+            payoutDiff: bestMatch.payoutDiff,
+            expectedPayout: expectedPayoutNum
+          };
+        }
+      }
+
+      // Fallback: Find closest match by time only (if no payout matching or payout details unavailable)
+      console.log(`[Ringba] Matching by time only (no payout matching or details unavailable)`);
       let bestMatch = null;
       let bestDiff = Infinity;
-      const targetTime = callDt.getTime();
 
       for (const record of records) {
         const recordTime = new Date(record.callDt).getTime();
@@ -262,9 +343,11 @@ export const findCallByCallerIdAndTime = (accountId, apiToken) => (callerId, cal
       return bestMatch ? {
         inboundCallId: bestMatch.inboundCallId,
         callDt: bestMatch.callDt,
-        callerId: bestMatch['tag:InboundNumber:Number'] || e164Phone, // Use tag column from response, fallback to filtered value
+        callerId: bestMatch['tag:InboundNumber:Number'] || e164Phone,
         inboundPhoneNumber: bestMatch.inboundPhoneNumber,
-        timeDiffMinutes: Math.round(bestDiff / 60000)
+        timeDiffMinutes: Math.round(bestDiff / 60000),
+        payoutMatch: false,
+        payout: null
       } : null;
     },
     (error) => new Error(`Failed to lookup Ringba call: ${error.message}`)

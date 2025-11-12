@@ -10,7 +10,7 @@ import { dbOps } from './database/sqlite-operations.js';
 import { scrapingOps } from './scrapers/elocal-scraper.js';
 import { createScheduler } from './services/scheduler.js';
 import { createMultiScheduler } from './services/multi-scheduler.js';
-import { scrapeHistoricalData, scrapeCurrentDayData } from './services/elocal-services.js';
+import { scrapeHistoricalData, scrapeCurrentDayData, scrapeHistoricalDataAPI, scrapeCurrentDayDataAPI } from './services/elocal-services.js';
 import { optimizedConfig } from './config/optimized-config.js';
 import {
   validateConfig,
@@ -217,7 +217,7 @@ const runService = () => {
   )(optimizedConfig.validate(config));
 };
 
-// Historical data service function
+// Historical data service function (STATIC)
 const runHistoricalService = () => {
   const config = createConfig();
   
@@ -238,7 +238,7 @@ const runHistoricalService = () => {
   )(optimizedConfig.validate(config));
 };
 
-// Current day service function
+// Current day service function (STATIC)
 const runCurrentDayService = () => {
   const config = createConfig();
   
@@ -352,11 +352,11 @@ const main = async () => {
       const config = createConfig();
       console.log('[INFO] Starting multi-scheduler service...');
       console.log('[INFO] This will run:');
-      console.log('  - Historical data service: Every 24 hours at 2 AM (past 10 days)');
-      console.log('  - Current day service: Every 3 hours (current day only)');
-      console.log('  - Auth refresh: Every 3 days at 01:30');
+      console.log('  - Historical data service: Every 5 minutes (past 10 days, STATIC category)');
+      console.log('  - Current day service: Every 5 minutes (current day only, STATIC category)');
+      console.log('  - Auth refresh: Once a week on Sunday at 2:00 AM IST');
       if (config.ringbaSyncEnabled && config.ringbaAccountId && config.ringbaApiToken) {
-        console.log(`  - Ringba sync: ${config.ringbaSyncCron || 'Every hour'}`);
+        console.log('  - Ringba sync: Every 5 minutes (all categories)');
       }
       
       const result = await TE.getOrElse(() => {
@@ -414,6 +414,58 @@ const main = async () => {
       
       process.exit(0);
       
+    } else if (command === 'historical-api' || command === 'history-api') {
+      console.log('[INFO] Running historical data service (API category, past 10 days, excluding today)...');
+      
+      const config = createConfig();
+      const validConfig = E.fold(
+        (error) => {
+          console.error('[ERROR] Configuration validation failed:', error.message);
+          process.exit(1);
+          return null;
+        },
+        (cfg) => cfg
+      )(optimizedConfig.validate(config));
+      
+      const result = await TE.getOrElse(() => {
+        throw new Error('Historical API service execution failed');
+      })(scrapeHistoricalDataAPI(validConfig))();
+      
+      console.log('[SUCCESS] Historical API service completed successfully');
+      console.log('Result:', {
+        dateRange: result.dateRange,
+        summary: result.summary,
+        databaseResults: result.databaseResults
+      });
+      
+      process.exit(0);
+      
+    } else if (command === 'current-api' || command === 'today-api') {
+      console.log('[INFO] Running current day service (API category)...');
+      
+      const config = createConfig();
+      const validConfig = E.fold(
+        (error) => {
+          console.error('[ERROR] Configuration validation failed:', error.message);
+          process.exit(1);
+          return null;
+        },
+        (cfg) => cfg
+      )(optimizedConfig.validate(config));
+      
+      const result = await TE.getOrElse(() => {
+        throw new Error('Current day API service execution failed');
+      })(scrapeCurrentDayDataAPI(validConfig))();
+      
+      console.log('[SUCCESS] Current day API service completed successfully');
+      console.log('Result:', {
+        dateRange: result.dateRange,
+        summary: result.summary,
+        databaseResults: result.databaseResults
+      });
+      
+      process.exit(0);
+      
     } else if (command === 'scheduler' || command === 'schedule') {
       console.log('[INFO] Starting legacy scheduler service...');
       
@@ -450,16 +502,23 @@ const main = async () => {
       }
       process.exit(0);
     } else if (command === 'ringba-sync' || command === 'sync-ringba') {
-      console.log('[INFO] Running Ringba sync service...');
+      console.log('[INFO] Running Ringba sync service (all categories)...');
       const { syncAdjustmentsToRingba } = await import('./services/ringba-sync.js');
       const config = createConfig();
-      const resultEither = await syncAdjustmentsToRingba(config)();
+      
+      // Check for category filter
+      const args = process.argv.slice(2);
+      const categoryIdx = args.indexOf('--category');
+      const category = categoryIdx >= 0 && args[categoryIdx + 1] ? args[categoryIdx + 1].toUpperCase() : null;
+      
+      const resultEither = await syncAdjustmentsToRingba(config)(category)();
       
       if (resultEither._tag === 'Right') {
         const result = resultEither.right;
         console.log('[SUCCESS] Ringba sync completed:', result);
         console.log(`  - Synced: ${result.synced || 0}`);
         console.log(`  - Failed: ${result.failed || 0}`);
+        console.log(`  - Skipped: ${result.skipped || 0}`);
       } else {
         const error = resultEither.left;
         const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
@@ -513,77 +572,118 @@ const main = async () => {
       const results = {
         historical: null,
         current: null,
+        historicalAPI: null,
+        currentAPI: null,
         ringbaSync: null
       };
       
-      // 1. Historical data service
+      // 1. Historical data service (STATIC)
       try {
-        console.log('[INFO] [1/3] Running historical data service...');
+        console.log('[INFO] [1/5] Running historical data service (STATIC)...');
         const historicalResult = await TE.getOrElse(() => {
           throw new Error('Historical service execution failed');
         })(runHistoricalService())();
         results.historical = { success: true, result: historicalResult };
-        console.log('[SUCCESS] [1/3] Historical service completed');
+        console.log('[SUCCESS] [1/5] Historical service (STATIC) completed');
         console.log('  - Date range:', historicalResult.dateRange);
         console.log('  - Total calls:', historicalResult.summary.totalCalls);
         console.log('  - Adjustments applied:', historicalResult.summary.adjustmentsApplied);
       } catch (error) {
         results.historical = { success: false, error: error.message };
-        console.log('[ERROR] [1/3] Historical service failed:', error.message);
+        console.log('[ERROR] [1/5] Historical service (STATIC) failed:', error.message);
       }
       
       console.log('');
       
-      // 2. Current day service
+      // 2. Current day service (STATIC)
       try {
-        console.log('[INFO] [2/3] Running current day service...');
+        console.log('[INFO] [2/5] Running current day service (STATIC)...');
         const currentResult = await TE.getOrElse(() => {
           throw new Error('Current day service execution failed');
         })(runCurrentDayService())();
         results.current = { success: true, result: currentResult };
-        console.log('[SUCCESS] [2/3] Current day service completed');
+        console.log('[SUCCESS] [2/5] Current day service (STATIC) completed');
         console.log('  - Date range:', currentResult.dateRange);
         console.log('  - Total calls:', currentResult.summary.totalCalls);
         console.log('  - Adjustments applied:', currentResult.summary.adjustmentsApplied);
       } catch (error) {
         results.current = { success: false, error: error.message };
-        console.log('[ERROR] [2/3] Current day service failed:', error.message);
+        console.log('[ERROR] [2/5] Current day service (STATIC) failed:', error.message);
       }
       
       console.log('');
       
-      // 3. Ringba sync service
+      // 3. Historical data service (API)
       try {
-        console.log('[INFO] [3/3] Running Ringba sync service...');
+        console.log('[INFO] [3/5] Running historical data service (API)...');
+        const historicalAPIResult = await TE.getOrElse(() => {
+          throw new Error('Historical API service execution failed');
+        })(scrapeHistoricalDataAPI(config))();
+        results.historicalAPI = { success: true, result: historicalAPIResult };
+        console.log('[SUCCESS] [3/5] Historical service (API) completed');
+        console.log('  - Date range:', historicalAPIResult.dateRange);
+        console.log('  - Total calls:', historicalAPIResult.summary.totalCalls);
+      } catch (error) {
+        results.historicalAPI = { success: false, error: error.message };
+        console.log('[ERROR] [3/5] Historical service (API) failed:', error.message);
+      }
+      
+      console.log('');
+      
+      // 4. Current day service (API)
+      try {
+        console.log('[INFO] [4/5] Running current day service (API)...');
+        const currentAPIResult = await TE.getOrElse(() => {
+          throw new Error('Current day API service execution failed');
+        })(scrapeCurrentDayDataAPI(config))();
+        results.currentAPI = { success: true, result: currentAPIResult };
+        console.log('[SUCCESS] [4/5] Current day service (API) completed');
+        console.log('  - Date range:', currentAPIResult.dateRange);
+        console.log('  - Total calls:', currentAPIResult.summary.totalCalls);
+      } catch (error) {
+        results.currentAPI = { success: false, error: error.message };
+        console.log('[ERROR] [4/5] Current day service (API) failed:', error.message);
+      }
+      
+      console.log('');
+      
+      // 5. Ringba sync service (all categories)
+      try {
+        console.log('[INFO] [5/5] Running Ringba sync service (all categories)...');
         const { syncAdjustmentsToRingba } = await import('./services/ringba-sync.js');
-        const ringbaEither = await syncAdjustmentsToRingba(config)();
+        const ringbaEither = await syncAdjustmentsToRingba(config)(null)(); // null = all categories
         
         if (ringbaEither._tag === 'Right') {
           const ringbaResult = ringbaEither.right;
           results.ringbaSync = { success: true, result: ringbaResult };
-          console.log('[SUCCESS] [3/3] Ringba sync completed');
+          console.log('[SUCCESS] [5/5] Ringba sync completed');
           console.log('  - Synced:', ringbaResult.synced || 0);
           console.log('  - Failed:', ringbaResult.failed || 0);
+          console.log('  - Skipped:', ringbaResult.skipped || 0);
         } else {
           const error = ringbaEither.left;
           const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
           results.ringbaSync = { success: false, error: errorMsg };
-          console.log('[ERROR] [3/3] Ringba sync failed:', errorMsg);
+          console.log('[ERROR] [5/5] Ringba sync failed:', errorMsg);
         }
       } catch (error) {
         results.ringbaSync = { success: false, error: error.message };
-        console.log('[ERROR] [3/3] Ringba sync failed:', error.message);
+        console.log('[ERROR] [5/5] Ringba sync failed:', error.message);
       }
       
       console.log('');
       console.log('=== ALL SERVICES COMPLETED ===');
       console.log('Summary:');
-      console.log(`  Historical: ${results.historical?.success ? '✓ Success' : '✗ Failed'}`);
-      console.log(`  Current Day: ${results.current?.success ? '✓ Success' : '✗ Failed'}`);
+      console.log(`  Historical (STATIC): ${results.historical?.success ? '✓ Success' : '✗ Failed'}`);
+      console.log(`  Current Day (STATIC): ${results.current?.success ? '✓ Success' : '✗ Failed'}`);
+      console.log(`  Historical (API): ${results.historicalAPI?.success ? '✓ Success' : '✗ Failed'}`);
+      console.log(`  Current Day (API): ${results.currentAPI?.success ? '✓ Success' : '✗ Failed'}`);
       console.log(`  Ringba Sync: ${results.ringbaSync?.success ? '✓ Success' : '✗ Failed'}`);
       
       const allSuccess = results.historical?.success && 
                         results.current?.success && 
+                        results.historicalAPI?.success &&
+                        results.currentAPI?.success &&
                         results.ringbaSync?.success;
       
       if (allSuccess) {
@@ -609,9 +709,14 @@ const main = async () => {
       console.log('Usage:');
       console.log('  npm start                    - Run scraper once');
       console.log('  npm start scrape             - Run scraper once');
-      console.log('  npm start run-all            - Run all services sequentially (auth, historical, current, ringba)');
-      console.log('  npm start historical         - Run historical data service (past 10 days)');
-      console.log('  npm start current            - Run current day service');
+      console.log('  npm start run-all            - Run all services sequentially (STATIC + API + ringba)');
+      console.log('  npm start historical         - Run historical data service (STATIC, past 10 days)');
+      console.log('  npm start current            - Run current day service (STATIC)');
+      console.log('  npm start historical-api     - Run historical data service (API, past 10 days)');
+      console.log('  npm start current-api       - Run current day service (API)');
+      console.log('  npm start ringba-sync       - Run Ringba sync (all categories)');
+      console.log('  npm start ringba-sync --category STATIC  - Run Ringba sync (STATIC only)');
+      console.log('  npm start ringba-sync --category API      - Run Ringba sync (API only)');
       console.log('  npm start multi-scheduler    - Start multi-scheduler (scheduled services)');
       console.log('  npm start scheduler          - Start legacy scheduler service');
       console.log('  npm run refresh-auth         - Refresh auth session (3-day TTL)');

@@ -14,7 +14,7 @@ const defaultHeaders = (referer) => ({
 export const buildCampaignResultsUrl = (baseUrl, dateRange, campaignId = '50033', page = 1) =>
   `${baseUrl}/partner_users/campaign_results?caller_phone_number=&end_date=${dateRange.endDateURL}&id=${campaignId}&page=${page}&start_date=${dateRange.startDateURL}`;
 
-export const fetchCampaignResultsHtmlWithSavedSession = async (config, dateRange, page = 1) => {
+export const fetchCampaignResultsHtmlWithSavedSession = async (config, dateRange, campaignId = '50033', page = 1) => {
   const session = await readSession();
   if (!isSessionValid(session)) {
     const err = new Error('Saved auth session is missing or expired');
@@ -22,9 +22,9 @@ export const fetchCampaignResultsHtmlWithSavedSession = async (config, dateRange
     throw err;
   }
 
-  const url = buildCampaignResultsUrl(config.elocalBaseUrl, dateRange, '50033', page);
+  const url = buildCampaignResultsUrl(config.elocalBaseUrl, dateRange, campaignId, page);
   const headers = {
-    ...defaultHeaders(`${config.elocalBaseUrl}/partner_users/campaign_results?id=50033`),
+    ...defaultHeaders(`${config.elocalBaseUrl}/partner_users/campaign_results?id=${campaignId}`),
     Cookie: session.cookieHeader,
   };
 
@@ -39,7 +39,7 @@ export const fetchCampaignResultsHtmlWithSavedSession = async (config, dateRange
 };
 
 // Fetch all pages of campaign results
-export const fetchAllCampaignResultsPages = async (config, dateRange) => {
+export const fetchAllCampaignResultsPages = async (config, dateRange, campaignId = '50033', includeAdjustments = true) => {
   const session = await readSession();
   if (!isSessionValid(session)) {
     const err = new Error('Saved auth session is missing or expired');
@@ -53,12 +53,12 @@ export const fetchAllCampaignResultsPages = async (config, dateRange) => {
   let totalPages = null;
   let hasMorePages = true;
 
-  console.log('[INFO] Starting paginated data fetch...');
+  console.log(`[INFO] Starting paginated data fetch for campaign ${campaignId}${includeAdjustments ? ' (with adjustments)' : ' (no adjustments)'}...`);
 
   while (hasMorePages) {
     try {
       console.log(`[INFO] Fetching page ${currentPage}...`);
-      const fetched = await fetchCampaignResultsHtmlWithSavedSession(config, dateRange, currentPage);
+      const fetched = await fetchCampaignResultsHtmlWithSavedSession(config, dateRange, campaignId, currentPage);
       
       // Detect pagination from first page
       if (currentPage === 1) {
@@ -78,12 +78,14 @@ export const fetchAllCampaignResultsPages = async (config, dateRange) => {
       // Extract data from current page
       const { extractCampaignCallsFromHtml, extractAdjustmentDetailsFromHtml } = await import('../scrapers/html-extractor.js');
       const pageCalls = extractCampaignCallsFromHtml(fetched.html);
-      const pageAdjustments = extractAdjustmentDetailsFromHtml(fetched.html);
+      const pageAdjustments = includeAdjustments ? extractAdjustmentDetailsFromHtml(fetched.html) : [];
       
-      console.log(`[INFO] Page ${currentPage}: Found ${pageCalls.length} calls, ${pageAdjustments.length} adjustments`);
+      console.log(`[INFO] Page ${currentPage}: Found ${pageCalls.length} calls${includeAdjustments ? `, ${pageAdjustments.length} adjustments` : ' (adjustments skipped)'}`);
       
       allCalls.push(...pageCalls);
-      allAdjustments.push(...pageAdjustments);
+      if (includeAdjustments) {
+        allAdjustments.push(...pageAdjustments);
+      }
 
       // Check if we should continue
       if (totalPages !== null) {

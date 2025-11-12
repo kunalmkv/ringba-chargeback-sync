@@ -57,10 +57,10 @@ export class MultiScheduler {
     return E.right(this);
   }
 
-  // Schedule historical data service (runs daily at 12:00 AM IST)
+  // Schedule historical data service (runs every 5 minutes for testing)
   scheduleHistoricalService() {
     const serviceInfo = getServiceInfo('historical');
-    const cronExpression = '0 0 * * *'; // Every day at 12:00 AM (midnight)
+    const cronExpression = '*/5 * * * *'; // Every 5 minutes
     
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for historical service: ${cronExpression}`));
@@ -89,7 +89,7 @@ export class MultiScheduler {
     this.logger.info('Historical service scheduled', {
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Daily at 12:00 AM IST (midnight)',
+      schedule: 'Every 5 minutes (for testing)',
       description: serviceInfo.description,
       dateRange: `${serviceInfo.dateRange.startDateFormatted} to ${serviceInfo.dateRange.endDateFormatted}`
     });
@@ -97,11 +97,10 @@ export class MultiScheduler {
     return E.right(task);
   }
 
-  // Schedule current day service (runs every 3 hours from 9 PM to 6 AM IST only)
-  // Runs at: 21:00 (9 PM), 00:00 (12 AM), 03:00 (3 AM), 06:00 (6 AM) IST
+  // Schedule current day service (runs every 5 minutes for testing)
   scheduleCurrentDayService() {
     const serviceInfo = getServiceInfo('current');
-    const cronExpression = '0 21,0,3,6 * * *'; // At 9 PM, 12 AM, 3 AM, 6 AM IST
+    const cronExpression = '*/5 * * * *'; // Every 5 minutes
     
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for current day service: ${cronExpression}`));
@@ -130,7 +129,7 @@ export class MultiScheduler {
     this.logger.info('Current day service scheduled', {
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Every 3 hours from 9 PM to 6 AM IST (21:00, 00:00, 03:00, 06:00)',
+      schedule: 'Every 5 minutes (for testing)',
       description: serviceInfo.description,
       dateRange: `${serviceInfo.dateRange.startDateFormatted} to ${serviceInfo.dateRange.endDateFormatted}`
     });
@@ -178,29 +177,21 @@ export class MultiScheduler {
     return E.right(task);
   }
 
-  // Schedule Ringba sync service (runs daily at 6:00 AM IST)
+  // Schedule Ringba sync service (runs every 5 minutes for testing)
   scheduleRingbaSync() {
     if (!this.config.ringbaSyncEnabled || !this.config.ringbaAccountId || !this.config.ringbaApiToken) {
       this.logger.info('Ringba sync skipped: not enabled or credentials missing');
       return E.right(null);
     }
 
-    const cronExpression = '0 6 * * *'; // Every day at 6:00 AM
+    const cronExpression = '*/5 * * * *'; // Every 5 minutes
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for Ringba sync: ${cronExpression}`));
     }
 
     const task = cron.schedule(
       cronExpression,
-      async () => {
-        this.logger.info('Running Ringba sync job...');
-        try {
-          const result = await syncAdjustmentsToRingba(this.config)();
-          this.logger.info(`Ringba sync completed: ${result.synced} synced, ${result.failed} failed`);
-        } catch (e) {
-          this.logger.error('Ringba sync failed', e.message);
-        }
-      },
+      () => this.runRingbaSyncJob(),
       {
         scheduled: false,
         timezone: 'Asia/Kolkata' // Indian Standard Time (IST)
@@ -220,7 +211,7 @@ export class MultiScheduler {
     this.logger.info('Ringba sync scheduled', { 
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Daily at 6:00 AM IST'
+      schedule: 'Every 5 minutes (for testing)'
     });
     return E.right(task);
   }
@@ -274,6 +265,39 @@ export class MultiScheduler {
     } catch (error) {
       stats.failedRuns++;
       this.logger.error(`Current day job ${jobId} failed with exception: ${error.message}`);
+    }
+  }
+
+  // Run Ringba sync job
+  async runRingbaSyncJob() {
+    const jobId = `ringbaSync_${Date.now()}`;
+    const stats = this.jobStats.get('ringbaSync');
+    
+    if (!stats) {
+      this.logger.error('Ringba sync stats not found');
+      return;
+    }
+    
+    stats.totalRuns++;
+    stats.lastRun = new Date().toISOString();
+
+    try {
+      this.logger.info(`Running Ringba sync job: ${jobId}`);
+      const resultEither = await syncAdjustmentsToRingba(this.config)(null)(); // null = all categories
+      
+      if (resultEither._tag === 'Right') {
+        const result = resultEither.right;
+        stats.successfulRuns++;
+        this.logger.info(`Ringba sync job ${jobId} completed successfully: ${result.synced} synced, ${result.failed} failed, ${result.skipped} skipped`);
+      } else {
+        stats.failedRuns++;
+        const error = resultEither.left;
+        const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+        this.logger.error(`Ringba sync job ${jobId} failed: ${errorMsg}`);
+      }
+    } catch (error) {
+      stats.failedRuns++;
+      this.logger.error(`Ringba sync job ${jobId} failed with exception: ${error.message}`);
     }
   }
 
@@ -357,7 +381,21 @@ export class MultiScheduler {
     // In production, you might want to use a proper cron parser
     try {
       const now = new Date();
-      if (cronExpression === '0 0 * * *') {
+      if (cronExpression === '*/5 * * * *') {
+        // Every 5 minutes
+        const next = new Date(now);
+        const currentMinutes = next.getMinutes();
+        const nextMinute = Math.ceil((currentMinutes + 1) / 5) * 5;
+        if (nextMinute >= 60) {
+          next.setHours(next.getHours() + 1);
+          next.setMinutes(0);
+        } else {
+          next.setMinutes(nextMinute);
+        }
+        next.setSeconds(0);
+        next.setMilliseconds(0);
+        return next.toISOString();
+      } else if (cronExpression === '0 0 * * *') {
         // Every day at 12:00 AM (midnight) IST
         const next = new Date(now);
         next.setHours(0, 0, 0, 0);

@@ -6,25 +6,73 @@ import * as T from 'fp-ts/lib/Task.js';
 import { withDatabase, logRingbaSyncAttempt } from '../database/sqlite-operations.js';
 import { findCallByCallerIdAndTime, updateCallPayment, resolvePaymentLegs } from '../http/ringba-client.js';
 
-// Get pending sync rows (have adjustment_amount, not yet synced successfully)
-const getPendingSyncRows = (config) =>
+// Get pending sync rows
+// For STATIC category: rows with adjustment_amount
+// For API category: all rows (need to check payout against Ringba)
+const getPendingSyncRows = (config) => (category = null) =>
   withDatabase(config)(async (db) => {
-    const stmt = db.prepare(`
-      SELECT 
-        id, date_of_call, campaign_phone, caller_id, payout,
-        adjustment_amount, adjustment_classification,
-        ringba_inbound_call_id, ringba_sync_status
-      FROM campaign_calls
-      WHERE adjustment_amount IS NOT NULL
-        AND (ringba_sync_status IS NULL 
-             OR ringba_sync_status = ''
-             OR ringba_sync_status = 'pending' 
-             OR ringba_sync_status = 'failed')
-        AND (ringba_sync_status IS NULL OR ringba_sync_status != 'cannot_sync')
-      ORDER BY id ASC
-      LIMIT 100
-    `);
-    return stmt.all();
+    let query = '';
+    let params = [];
+    
+    if (category === 'API') {
+      // API category: sync all rows to ensure payout matches Ringba
+      query = `
+        SELECT 
+          id, date_of_call, campaign_phone, caller_id, payout,
+          adjustment_amount, adjustment_classification, category,
+          ringba_inbound_call_id, ringba_sync_status
+        FROM campaign_calls
+        WHERE category = 'API'
+          AND (ringba_sync_status IS NULL 
+               OR ringba_sync_status = ''
+               OR ringba_sync_status = 'pending' 
+               OR ringba_sync_status = 'failed')
+          AND (ringba_sync_status IS NULL OR ringba_sync_status != 'cannot_sync')
+        ORDER BY id ASC
+        LIMIT 100
+      `;
+    } else if (category === 'STATIC') {
+      // STATIC category: only rows with adjustment_amount
+      query = `
+        SELECT 
+          id, date_of_call, campaign_phone, caller_id, payout,
+          adjustment_amount, adjustment_classification, category,
+          ringba_inbound_call_id, ringba_sync_status
+        FROM campaign_calls
+        WHERE category = 'STATIC'
+          AND adjustment_amount IS NOT NULL
+          AND (ringba_sync_status IS NULL 
+               OR ringba_sync_status = ''
+               OR ringba_sync_status = 'pending' 
+               OR ringba_sync_status = 'failed')
+          AND (ringba_sync_status IS NULL OR ringba_sync_status != 'cannot_sync')
+        ORDER BY id ASC
+        LIMIT 100
+      `;
+    } else {
+      // Default: both categories (backward compatibility)
+      query = `
+        SELECT 
+          id, date_of_call, campaign_phone, caller_id, payout,
+          adjustment_amount, adjustment_classification, category,
+          ringba_inbound_call_id, ringba_sync_status
+        FROM campaign_calls
+        WHERE (
+          (category = 'STATIC' AND adjustment_amount IS NOT NULL)
+          OR (category = 'API')
+        )
+          AND (ringba_sync_status IS NULL 
+               OR ringba_sync_status = ''
+               OR ringba_sync_status = 'pending' 
+               OR ringba_sync_status = 'failed')
+          AND (ringba_sync_status IS NULL OR ringba_sync_status != 'cannot_sync')
+        ORDER BY id ASC
+        LIMIT 100
+      `;
+    }
+    
+    const stmt = db.prepare(query);
+    return stmt.all(...params);
   });
 
 // Update sync status in database
@@ -78,8 +126,12 @@ const syncRowToRingba = (config) => (row) =>
 
       // Step 1: Always lookup call to get current revenue and payout values
       // Even if we have inboundCallId from previous sync, we need current values to calculate adjustments
-      console.log(`[Ringba] Looking up call for ${row.caller_id} at ${row.date_of_call}...`);
-      const lookupEither = await findCallByCallerIdAndTime(accountId, apiToken)(row.caller_id, row.date_of_call)();
+      // Also match by payout value to ensure we're updating the correct call
+      // For API category: Always search in Ringba by caller ID and time
+      const expectedPayout = row.payout ? Number(row.payout) : null;
+      const categoryLabel = row.category === 'API' ? ' (API category)' : '';
+      console.log(`[Ringba]${categoryLabel} Looking up call for ${row.caller_id} at ${row.date_of_call}${expectedPayout !== null ? ` with expected payout=$${expectedPayout}` : ''}...`);
+      const lookupEither = await findCallByCallerIdAndTime(accountId, apiToken)(row.caller_id, row.date_of_call, 60, expectedPayout)();
       
       if (lookupEither._tag === 'Left') {
         const error = lookupEither.left;
@@ -115,10 +167,19 @@ const syncRowToRingba = (config) => (row) =>
       }
 
       const inboundCallId = lookupResult.inboundCallId;
-      console.log(`[Ringba] Found call: ${inboundCallId} (time diff: ${lookupResult.timeDiffMinutes} min)`);
+      const payoutMatchInfo = lookupResult.payoutMatch !== undefined
+        ? (lookupResult.payoutMatch ? `, exact payout match ($${lookupResult.payout})` : `, payout diff=$${lookupResult.payoutDiff?.toFixed(2) || 'N/A'} (Ringba=$${lookupResult.payout || 'N/A'}, expected=$${lookupResult.expectedPayout || 'N/A'})`)
+        : '';
+      console.log(`[Ringba] Found call: ${inboundCallId} (time diff: ${lookupResult.timeDiffMinutes} min${payoutMatchInfo})`);
+      
+      // Warn if payout doesn't match (but still proceed with update)
+      if (lookupResult.payoutMatch === false && expectedPayout !== null) {
+        console.warn(`[Ringba] WARNING: Payout mismatch for call ${inboundCallId}. Ringba payout=$${lookupResult.payout || 'N/A'}, expected=$${expectedPayout}. Proceeding with update anyway.`);
+      }
 
       // Update DB with inboundCallId if not already set
-      if (!row.ringba_inbound_call_id) {
+      // For API category: Always update the inbound call ID when found
+      if (!row.ringba_inbound_call_id || row.category === 'API') {
         await TE.getOrElse(() => T.of(null))(updateSyncStatus(config)(row.id)('pending', inboundCallId, { lookup: lookupResult }))();
       }
 
@@ -160,9 +221,60 @@ const syncRowToRingba = (config) => (row) =>
       
       console.log(`[Ringba] Current values: revenue=$${currentRevenue}, payout=$${currentPayout}, revenue leg connected=${isConnected}`);
       
-      // Step 2b: Use payout value directly from database row (not adjustment_amount)
-      // Use the payout value from the row for both revenue and payout
+      // Step 2b: Use payout value directly from database row
+      // For STATIC category: Use payout from row (may have been adjusted)
+      // For API category: Use payout from row (fetched from Ringba during scraping, but may have changed)
       const payoutValue = Math.max(0, Number(row.payout || 0));
+      
+      // For API category: Compare with Ringba payout to see if update is needed
+      // API category: Always search in Ringba and update if payout doesn't match
+      if (row.category === 'API') {
+        const currentRingbaPayout = Number(payoutLeg.payout || 0);
+        const eLocalPayout = payoutValue;
+        
+        console.log(`[Ringba] API category: Comparing payouts - Ringba=$${currentRingbaPayout.toFixed(2)}, eLocal=$${eLocalPayout.toFixed(2)}`);
+        
+        // Only update if payout differs (with small tolerance for floating point)
+        const payoutDiff = Math.abs(currentRingbaPayout - eLocalPayout);
+        if (payoutDiff < 0.01) {
+          console.log(`[Ringba] API category: Payout matches (diff=$${payoutDiff.toFixed(2)}), no update needed`);
+          // Mark as synced without updating (payout already correct in Ringba)
+          await TE.getOrElse(() => T.of(null))(updateSyncStatus(config)(row.id)('success', inboundCallId, { 
+            message: 'Payout already matches, no update needed',
+            ringbaPayout: currentRingbaPayout,
+            eLocalPayout: eLocalPayout,
+            payoutDiff: payoutDiff
+          }))();
+          
+          // Log successful check (even though no update was needed)
+          await TE.getOrElse(() => T.of(null))(logRingbaSyncAttempt(config)({
+            campaignCallId: row.id,
+            dateOfCall: row.date_of_call,
+            callerId: row.caller_id,
+            adjustmentAmount: null,
+            adjustmentClassification: null,
+            ringbaInboundCallId: inboundCallId,
+            syncStatus: 'success',
+            revenue: currentRevenue,
+            payout: currentRingbaPayout,
+            lookupResult,
+            apiRequest: { message: 'No update needed - payout matches' },
+            apiResponse: { skipped: 'payout_matches' }
+          }))();
+          
+          return {
+            rowId: row.id,
+            inboundCallId,
+            revenue: currentRevenue,
+            payout: currentRingbaPayout,
+            status: 'success',
+            isMultiLeg,
+            isConnected,
+            skipped: 'payout_matches'
+          };
+        }
+        console.log(`[Ringba] API category: Payout differs by $${payoutDiff.toFixed(2)} (Ringba=$${currentRingbaPayout.toFixed(2)}, eLocal=$${eLocalPayout.toFixed(2)}), updating Ringba...`);
+      }
       
       // Set both revenue and payout to the same value from database
       const newPayout = payoutValue;
@@ -387,7 +499,7 @@ const syncRowToRingba = (config) => (row) =>
   );
 
 // Main sync service
-export const syncAdjustmentsToRingba = (config) =>
+export const syncAdjustmentsToRingba = (config) => (category = null) =>
   TE.tryCatch(
     async () => {
       if (!config.ringbaAccountId || !config.ringbaApiToken) {
@@ -395,10 +507,11 @@ export const syncAdjustmentsToRingba = (config) =>
         return { synced: 0, failed: 0, skipped: 0 };
       }
 
-      console.log('[Ringba] Starting sync of adjustments to Ringba...');
+      const categoryLabel = category ? ` (${category} category)` : ' (all categories)';
+      console.log(`[Ringba] Starting sync${categoryLabel}...`);
       
       // Get pending rows
-      const pendingRows = await TE.getOrElse(() => [])(getPendingSyncRows(config))();
+      const pendingRows = await TE.getOrElse(() => [])(getPendingSyncRows(config)(category))();
       
       if (pendingRows.length === 0) {
         console.log('[Ringba] No pending adjustments to sync');
@@ -409,6 +522,7 @@ export const syncAdjustmentsToRingba = (config) =>
 
       let synced = 0;
       let failed = 0;
+      let skipped = 0;
 
       // Process each row (with small delay to avoid rate limiting)
       for (const row of pendingRows) {
@@ -416,9 +530,15 @@ export const syncAdjustmentsToRingba = (config) =>
           const either = await syncRowToRingba(config)(row)();
           
           if (either._tag === 'Right') {
-            synced++;
             const result = either.right;
-            console.log(`[Ringba] Successfully synced row ${row.id} -> ${result.inboundCallId || 'N/A'}`);
+            // Check if this was skipped (payout already matches for API category)
+            if (result.skipped === 'payout_matches') {
+              skipped++;
+              console.log(`[Ringba] Skipped row ${row.id} (payout already matches in Ringba)`);
+            } else {
+              synced++;
+              console.log(`[Ringba] Successfully synced row ${row.id} -> ${result.inboundCallId || 'N/A'}`);
+            }
           } else {
             failed++;
             const error = either.left;
@@ -433,9 +553,9 @@ export const syncAdjustmentsToRingba = (config) =>
           console.error(`[Ringba] Exception syncing row ${row.id}:`, error.message || error);
         }
       }
-
-      console.log(`[Ringba] Sync completed: ${synced} synced, ${failed} failed`);
-      return { synced, failed, skipped: 0 };
+      
+      console.log(`[Ringba] Sync completed: ${synced} synced, ${failed} failed, ${skipped} skipped`);
+      return { synced, failed, skipped };
     },
     (error) => new Error(`Ringba sync service failed: ${error.message}`)
   );

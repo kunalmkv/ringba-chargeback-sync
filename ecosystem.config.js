@@ -17,6 +17,26 @@ export default {
       autorestart: true,
       watch: false,
       max_memory_restart: '500M'
+    },
+    {
+      name: 'elocal-scheduler',
+      script: 'src/index.js',
+      args: 'multi-scheduler',
+      instances: 1,
+      exec_mode: 'fork',
+      env: {
+        NODE_ENV: 'production'
+      },
+      error_file: './logs/scheduler-error.log',
+      out_file: './logs/scheduler-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      restart_delay: 5000,
+      min_uptime: '10s',
+      max_restarts: 10
     }
   ]
 };

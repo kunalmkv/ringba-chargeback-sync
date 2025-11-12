@@ -61,8 +61,14 @@ export const initializeDatabase = (config) =>
       const requiredColumns = ['date_of_call', 'campaign_phone', 'caller_id', 'payout', 'created_at', 'adjustment_time', 'adjustment_amount', 'adjustment_classification', 'adjustment_duration', 'unmatched', 'category', 'city_state', 'zip_code', 'screen_duration', 'post_screen_duration', 'total_duration', 'assessment', 'classification', 'ringba_inbound_call_id', 'ringba_sync_status', 'ringba_sync_at', 'ringba_sync_response'];
       const hasAllColumns = requiredColumns.every(col => columnNames.includes(col));
       if (!hasAllColumns) {
-        console.log('Table structure outdated, recreating...');
-        db.exec(`DROP TABLE IF EXISTS campaign_calls;`);
+        console.log('Table structure outdated, adding missing columns...');
+        // Add category column if it doesn't exist
+        if (!columnNames.includes('category')) {
+          db.exec(`ALTER TABLE campaign_calls ADD COLUMN category TEXT;`);
+          // Mark all existing rows as STATIC
+          db.exec(`UPDATE campaign_calls SET category = 'STATIC' WHERE category IS NULL;`);
+          console.log('Added category column and marked existing data as STATIC');
+        }
       }
     }
     
@@ -73,7 +79,7 @@ export const initializeDatabase = (config) =>
         campaign_phone TEXT NOT NULL,
         caller_id TEXT NOT NULL,
         payout REAL DEFAULT 0.00,
-        category TEXT,
+        category TEXT DEFAULT 'STATIC',
         city_state TEXT,
         zip_code TEXT,
         screen_duration INTEGER,
@@ -91,7 +97,7 @@ export const initializeDatabase = (config) =>
         ringba_sync_at TEXT,
         ringba_sync_response TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(caller_id, date_of_call, campaign_phone)
+        UNIQUE(caller_id, date_of_call, campaign_phone, category)
       );
       
       CREATE INDEX IF NOT EXISTS idx_caller_id ON campaign_calls(caller_id);
@@ -227,7 +233,7 @@ export const insertCampaignCallsBatch = (config) => (calls) =>
         adjustment_time, adjustment_amount, adjustment_classification, adjustment_duration,
         unmatched
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(caller_id, date_of_call, campaign_phone) 
+      ON CONFLICT(caller_id, date_of_call, campaign_phone, category) 
       DO UPDATE SET 
         payout = excluded.payout,
         category = COALESCE(excluded.category, category),
@@ -252,12 +258,15 @@ export const insertCampaignCallsBatch = (config) => (calls) =>
       
       for (const call of calls) {
         try {
+          // Ensure category is set (default to 'STATIC' if not provided)
+          const callCategory = call.category || 'STATIC';
+          
           // Check if record exists to determine if it's insert or update
           const existing = db.prepare(`
             SELECT id, payout FROM campaign_calls 
-            WHERE caller_id = ? AND date_of_call = ? AND campaign_phone = ?
+            WHERE caller_id = ? AND date_of_call = ? AND campaign_phone = ? AND category = ?
             LIMIT 1
-          `).get(call.callerId, call.dateOfCall, call.campaignPhone);
+          `).get(call.callerId, call.dateOfCall, call.campaignPhone, callCategory);
           
           const wasExisting = existing !== undefined;
           const payoutChanged = wasExisting && existing.payout !== call.payout;
@@ -268,7 +277,7 @@ export const insertCampaignCallsBatch = (config) => (calls) =>
             call.campaignPhone,
             call.callerId,
             call.payout,
-            call.category || null,
+            callCategory, // Use ensured category
             call.cityState || null,
             call.zipCode || null,
             call.screenDuration || null,

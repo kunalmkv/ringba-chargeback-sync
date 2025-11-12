@@ -14,7 +14,8 @@ export const extractCampaignCallsFromHtml = (html) => {
     const isSummary = headers.some(h => h.includes('Total')) && !headers.some(h => h.includes('Date') || h.includes('Time'));
     if (isAdjustment || isSummary) continue;
 
-    const payoutIndex = headers.findIndex(h => /payout/i.test(h));
+    // Look for either "payout" or "call price" column (API category uses "call price")
+    const payoutIndex = headers.findIndex(h => /payout/i.test(h) || /call\s*price/i.test(h) || /price/i.test(h));
     if (payoutIndex === -1) continue;
 
     const dateIndex = headers.findIndex(h => /(Date|Time)/i.test(h));
