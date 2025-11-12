@@ -407,9 +407,19 @@ const routes = {
     
     // Try React build first, fallback to old HTML
     if (fs.existsSync(buildPath)) {
-      const html = fs.readFileSync(buildPath, 'utf8');
+      let html = fs.readFileSync(buildPath, 'utf8');
       console.log('[ROOT] Serving React build, length:', html.length);
-      res.writeHead(200, { 'Content-Type': 'text/html' });
+      
+      // Ensure base tag is set correctly for path prefix
+      if (!html.includes('<base href=')) {
+        html = html.replace('<head>', '<head>\n    <base href="/ringba-sync-dashboard/">');
+        console.log('[ROOT] Added base tag to HTML');
+      }
+      
+      res.writeHead(200, { 
+        'Content-Type': 'text/html',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      });
       res.end(html);
     } else if (fs.existsSync(fallbackPath)) {
       console.log('[ROOT] Serving fallback HTML');
@@ -466,6 +476,8 @@ const server = http.createServer((req, res) => {
     if (fs.existsSync(buildDir)) {
       // Handle both /assets/... and /ringba-sync-dashboard/assets/... paths
       let filePath = pathname;
+      
+      // Strip /ringba-sync-dashboard prefix if present
       if (pathname.startsWith('/ringba-sync-dashboard/')) {
         filePath = pathname.replace('/ringba-sync-dashboard', '');
       }
@@ -497,21 +509,38 @@ const server = http.createServer((req, res) => {
           '.ico': 'image/x-icon',
           '.woff': 'font/woff',
           '.woff2': 'font/woff2',
-          '.ttf': 'font/ttf'
+          '.ttf': 'font/ttf',
+          '.map': 'application/json'
         }[ext] || 'application/octet-stream';
         
-        console.log(`[ASSET] Serving: ${pathname} -> ${fullPath} (${contentType})`);
+        console.log(`[ASSET] Serving: ${pathname} -> ${fullPath} (${contentType}, ${fs.statSync(fullPath).size} bytes)`);
         res.writeHead(200, { 
           'Content-Type': contentType,
-          'Cache-Control': 'public, max-age=31536000, immutable'
+          'Cache-Control': ext === '.map' ? 'no-cache' : 'public, max-age=31536000, immutable'
         });
         res.end(fs.readFileSync(fullPath));
         return;
       } else {
-        console.warn(`[ASSET] File not found: ${pathname} -> ${fullPath}`);
+        console.warn(`[ASSET] File not found: ${pathname} -> ${fullPath} (exists: ${fs.existsSync(fullPath)})`);
+        // Try to list directory contents for debugging
+        if (fs.existsSync(path.dirname(fullPath))) {
+          const dirContents = fs.readdirSync(path.dirname(fullPath));
+          console.warn(`[ASSET] Directory contents: ${dirContents.join(', ')}`);
+        }
       }
     } else {
       console.warn(`[ASSET] Build directory not found: ${buildDir}`);
+    }
+    
+    // Fallback: try serving index.html for SPA routing
+    if (pathname.startsWith('/ringba-sync-dashboard/') || pathname === '/ringba-sync-dashboard') {
+      const indexPath = path.join(__dirname, 'dashboard-build', 'index.html');
+      if (fs.existsSync(indexPath)) {
+        console.log(`[SPA] Serving index.html for: ${pathname}`);
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(fs.readFileSync(indexPath));
+        return;
+      }
     }
     
     console.warn(`[WARN] Route not found: ${pathname}`);
