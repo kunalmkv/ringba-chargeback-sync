@@ -359,7 +359,7 @@ const routes = {
 // Create HTTP server
 const server = http.createServer((req, res) => {
   const parsedUrl = url.parse(req.url, true);
-  const pathname = parsedUrl.pathname;
+  let pathname = parsedUrl.pathname;
 
   // Debug logging (can be removed in production)
   console.log(`[${req.method}] ${pathname}`);
@@ -373,6 +373,11 @@ const server = http.createServer((req, res) => {
     res.writeHead(200);
     res.end();
     return;
+  }
+
+  // Handle /ringba-sync-dashboard/api/* paths (strip prefix for direct access)
+  if (pathname.startsWith('/ringba-sync-dashboard/api/')) {
+    pathname = pathname.replace('/ringba-sync-dashboard', '');
   }
 
   // Route handling
