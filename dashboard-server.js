@@ -337,35 +337,21 @@ const routes = {
     }
   },
 
-  // Dashboard HTML
+  // Serve React build or fallback to HTML (handle both root and prefixed paths)
+  // Nginx rewrites /ringba-sync-dashboard/ to /, so we serve on root
   '/': (req, res) => {
-    const dashboardPath = path.join(__dirname, 'dashboard.html');
-    if (fs.existsSync(dashboardPath)) {
+    const buildPath = path.join(__dirname, 'dashboard-build', 'index.html');
+    const fallbackPath = path.join(__dirname, 'dashboard.html');
+    
+    // Try React build first, fallback to old HTML
+    if (fs.existsSync(buildPath)) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(fs.readFileSync(dashboardPath));
+      res.end(fs.readFileSync(buildPath));
+    } else if (fs.existsSync(fallbackPath)) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(fs.readFileSync(fallbackPath));
     } else {
       sendError(res, 'Dashboard not found', 404);
-    }
-  },
-
-  // Serve CSS and JS files
-  '/dashboard.css': (req, res) => {
-    const cssPath = path.join(__dirname, 'dashboard.css');
-    if (fs.existsSync(cssPath)) {
-      res.writeHead(200, { 'Content-Type': 'text/css' });
-      res.end(fs.readFileSync(cssPath));
-    } else {
-      sendError(res, 'CSS not found', 404);
-    }
-  },
-
-  '/dashboard.js': (req, res) => {
-    const jsPath = path.join(__dirname, 'dashboard.js');
-    if (fs.existsSync(jsPath)) {
-      res.writeHead(200, { 'Content-Type': 'application/javascript' });
-      res.end(fs.readFileSync(jsPath));
-    } else {
-      sendError(res, 'JavaScript not found', 404);
     }
   }
 };
@@ -374,6 +360,9 @@ const routes = {
 const server = http.createServer((req, res) => {
   const parsedUrl = url.parse(req.url, true);
   const pathname = parsedUrl.pathname;
+
+  // Debug logging (can be removed in production)
+  console.log(`[${req.method}] ${pathname}`);
 
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -391,9 +380,56 @@ const server = http.createServer((req, res) => {
     try {
       routes[pathname](req, res);
     } catch (error) {
+      console.error(`[ERROR] Route ${pathname}:`, error.message);
       sendError(res, error.message);
     }
   } else {
+    // Try to serve static files from React build
+    const buildDir = path.join(__dirname, 'dashboard-build');
+    if (fs.existsSync(buildDir)) {
+      // Handle both /assets/... and /ringba-sync-dashboard/assets/... paths
+      let filePath = pathname;
+      if (pathname.startsWith('/ringba-sync-dashboard/')) {
+        filePath = pathname.replace('/ringba-sync-dashboard', '');
+      }
+      
+      // Remove leading slash and join with build directory
+      const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+      const fullPath = path.join(buildDir, cleanPath);
+      
+      // Security check: ensure path is within build directory
+      const resolvedPath = path.resolve(fullPath);
+      const resolvedBuildDir = path.resolve(buildDir);
+      if (!resolvedPath.startsWith(resolvedBuildDir)) {
+        console.warn(`[WARN] Security: Path outside build directory: ${pathname}`);
+        sendError(res, 'Not found', 404);
+        return;
+      }
+      
+      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+        const ext = path.extname(fullPath);
+        const contentType = {
+          '.html': 'text/html',
+          '.js': 'application/javascript',
+          '.css': 'text/css',
+          '.json': 'application/json',
+          '.png': 'image/png',
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.svg': 'image/svg+xml',
+          '.ico': 'image/x-icon',
+          '.woff': 'font/woff',
+          '.woff2': 'font/woff2',
+          '.ttf': 'font/ttf'
+        }[ext] || 'application/octet-stream';
+        
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(fs.readFileSync(fullPath));
+        return;
+      }
+    }
+    
+    console.warn(`[WARN] Route not found: ${pathname}`);
     sendError(res, 'Not found', 404);
   }
 });

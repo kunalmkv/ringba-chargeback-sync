@@ -1,5 +1,21 @@
 // Dashboard JavaScript
-const API_BASE_URL = window.location.origin;
+// Detect base path for API calls (handles nginx proxy with path prefix)
+const getBasePath = () => {
+  const pathname = window.location.pathname;
+  // If pathname includes /ringba-sync-dashboard, use it as base path
+  if (pathname.includes('/ringba-sync-dashboard')) {
+    return '/ringba-sync-dashboard';
+  }
+  return '';
+};
+
+const BASE_PATH = getBasePath();
+const API_BASE_URL = window.location.origin + BASE_PATH;
+
+// Debug logging
+console.log('[Dashboard] Base path:', BASE_PATH);
+console.log('[Dashboard] API base URL:', API_BASE_URL);
+console.log('[Dashboard] Current pathname:', window.location.pathname);
 
 // State
 let autoRefreshInterval = null;
@@ -95,7 +111,12 @@ async function loadAllData() {
 // Load health status
 async function loadHealth() {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/health`);
+        const url = `${API_BASE_URL}/api/health`;
+        console.log('[Dashboard] Fetching health from:', url);
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         const data = await response.json();
 
         if (data.status === 'healthy') {
@@ -111,7 +132,8 @@ async function loadHealth() {
             }
         }
     } catch (error) {
-        console.error('Error loading health:', error);
+        console.error('[Dashboard] Error loading health:', error);
+        updateStatus('Error: ' + error.message, 'error');
     }
 }
 
@@ -151,7 +173,12 @@ function getStatusClass(status) {
 // Load statistics
 async function loadStats() {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/stats`);
+        const url = `${API_BASE_URL}/api/stats`;
+        console.log('[Dashboard] Fetching stats from:', url);
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         const data = await response.json();
 
         // Update stat cards
@@ -185,6 +212,9 @@ async function loadHistory() {
         url.searchParams.append('limit', limit);
 
         const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         const data = await response.json();
 
         const tbody = document.getElementById('historyTableBody');
@@ -220,7 +250,12 @@ async function loadHistory() {
 // Load activity
 async function loadActivity() {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/activity?limit=20`);
+        const url = `${API_BASE_URL}/api/activity?limit=20`;
+        console.log('[Dashboard] Fetching activity from:', url);
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         const data = await response.json();
 
         // Update recent calls
@@ -276,7 +311,12 @@ async function loadActivity() {
 // Load top callers
 async function loadTopCallers() {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/stats`);
+        const url = `${API_BASE_URL}/api/stats`;
+        console.log('[Dashboard] Fetching stats (top callers) from:', url);
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         const data = await response.json();
 
         const tbody = document.getElementById('topCallersBody');

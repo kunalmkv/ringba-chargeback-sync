@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base href="/ringba-sync-dashboard/">
+    <title>Test</title>
+</head>
+<body>
+    <h1>Path Test</h1>
+    <script>
+        console.log('Base href:', document.querySelector('base')?.href);
+        console.log('Location:', window.location.href);
+        console.log('Pathname:', window.location.pathname);
+        console.log('Origin:', window.location.origin);
+        
+        // Test API URL construction
+        const getBasePath = () => {
+            const pathname = window.location.pathname;
+            if (pathname.includes('/ringba-sync-dashboard')) {
+                return '/ringba-sync-dashboard';
+            }
+            return '';
+        };
+        const BASE_PATH = getBasePath();
+        const API_BASE_URL = window.location.origin + BASE_PATH;
+        console.log('BASE_PATH:', BASE_PATH);
+        console.log('API_BASE_URL:', API_BASE_URL);
+        console.log('API call would be:', API_BASE_URL + '/api/health');
+    </script>
+</body>
+</html>
