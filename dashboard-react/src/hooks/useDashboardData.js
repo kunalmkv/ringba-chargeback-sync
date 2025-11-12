@@ -1,15 +1,33 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../utils/api';
 
+// Get initial data from embedded script tag (if available)
+const getInitialData = () => {
+  try {
+    const scriptTag = document.getElementById('dashboard-initial-data');
+    if (scriptTag && scriptTag.textContent) {
+      const data = JSON.parse(scriptTag.textContent);
+      console.log('[Dashboard] Loaded initial data from embedded script');
+      return data;
+    }
+  } catch (error) {
+    console.warn('[Dashboard] Could not parse initial data:', error);
+  }
+  return null;
+};
+
 export const useDashboardData = () => {
-  const [health, setHealth] = useState(null);
-  const [stats, setStats] = useState(null);
-  const [history, setHistory] = useState(null);
-  const [activity, setActivity] = useState({ calls: [], adjustments: [], sessions: [] });
-  const [topCallers, setTopCallers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Initialize with embedded data if available
+  const initialData = getInitialData();
+  
+  const [health, setHealth] = useState(initialData?.health || null);
+  const [stats, setStats] = useState(initialData?.stats || null);
+  const [history, setHistory] = useState(initialData?.history?.sessions || null);
+  const [activity, setActivity] = useState(initialData?.activity || { calls: [], adjustments: [], sessions: [] });
+  const [topCallers, setTopCallers] = useState(initialData?.stats?.topCallers || []);
+  const [loading, setLoading] = useState(!initialData); // Only loading if no initial data
   const [error, setError] = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(initialData?.timestamp ? new Date(initialData.timestamp) : null);
 
   const loadHealth = useCallback(async () => {
     try {
@@ -79,14 +97,19 @@ export const useDashboardData = () => {
   }, [loadHealth, loadStats, loadHistory, loadActivity]);
 
   useEffect(() => {
-    loadAllData();
+    // Get initial data on mount (in case it wasn't available during hook initialization)
+    const data = getInitialData();
     
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
+    // If we have initial data, skip initial load
+    if (!data) {
       loadAllData();
-    }, 30000);
-
-    return () => clearInterval(interval);
+    } else {
+      setLoading(false);
+      setLastUpdated(new Date(data.timestamp));
+    }
+    
+    // Auto-refresh disabled - data is fresh on each page load
+    // If refresh is needed, user can reload the page
   }, [loadAllData]);
 
   return {

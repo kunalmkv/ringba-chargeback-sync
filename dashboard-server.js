@@ -39,6 +39,204 @@ const sendError = (res, message, statusCode = 500) => {
   sendJSON(res, { error: message }, statusCode);
 };
 
+// Fetch all dashboard data directly from database
+const fetchAllDashboardData = () => {
+  const db = getDb();
+  if (!db) {
+    return null;
+  }
+
+  try {
+    // Health data
+    const lastHistorical = db.prepare(`
+      SELECT * FROM scraping_sessions 
+      WHERE session_id LIKE '%historical%' 
+      ORDER BY started_at DESC 
+      LIMIT 1
+    `).get();
+
+    const lastCurrent = db.prepare(`
+      SELECT * FROM scraping_sessions 
+      WHERE session_id LIKE '%current%' 
+      ORDER BY started_at DESC 
+      LIMIT 1
+    `).get();
+
+    const lastRingbaSync = db.prepare(`
+      SELECT * FROM ringba_sync_logs 
+      ORDER BY sync_completed_at DESC, id DESC 
+      LIMIT 1
+    `).get();
+
+    const totalSessions = db.prepare(`
+      SELECT COUNT(*) as total,
+             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+      FROM scraping_sessions
+    `).get();
+
+    const successRate = totalSessions.total > 0 
+      ? ((totalSessions.completed / totalSessions.total) * 100).toFixed(2)
+      : 0;
+
+    const health = {
+      status: 'healthy',
+      database: 'connected',
+      services: {
+        historical: {
+          lastRun: lastHistorical?.started_at || null,
+          status: lastHistorical?.status || 'unknown',
+          lastStatus: lastHistorical?.status || 'unknown'
+        },
+        current: {
+          lastRun: lastCurrent?.started_at || null,
+          status: lastCurrent?.status || 'unknown',
+          lastStatus: lastCurrent?.status || 'unknown'
+        },
+        ringba: {
+          lastRun: lastRingbaSync?.sync_completed_at || lastRingbaSync?.sync_attempted_at || null,
+          status: lastRingbaSync?.sync_status || 'unknown',
+          lastStatus: lastRingbaSync?.sync_status || 'unknown'
+        }
+      },
+      successRate: parseFloat(successRate)
+    };
+
+    // Stats data
+    const totalCalls = db.prepare(`SELECT COUNT(*) as count FROM campaign_calls`).get();
+    const totalAdjustments = db.prepare(`SELECT COUNT(*) as count FROM adjustment_details`).get();
+    const totalPayout = db.prepare(`SELECT SUM(payout) as total FROM campaign_calls`).get();
+    const callsToday = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM campaign_calls 
+      WHERE DATE(date_of_call) = DATE('now')
+    `).get();
+    const callsThisWeek = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM campaign_calls 
+      WHERE DATE(date_of_call) >= DATE('now', '-7 days')
+    `).get();
+
+    const ringbaStatsRecent = db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN sync_status = 'success' THEN 1 ELSE 0 END) as success,
+        SUM(CASE WHEN sync_status = 'failed' THEN 1 ELSE 0 END) as failed,
+        SUM(CASE WHEN sync_status = 'pending' OR sync_status = 'not_found' OR sync_status = 'cannot_sync' THEN 1 ELSE 0 END) as pending,
+        MAX(sync_completed_at) as last_sync_time
+      FROM ringba_sync_logs
+      WHERE sync_completed_at >= DATETIME('now', '-24 hours')
+    `).get();
+    
+    const ringbaStats = db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN sync_status = 'success' THEN 1 ELSE 0 END) as success,
+        SUM(CASE WHEN sync_status = 'failed' THEN 1 ELSE 0 END) as failed,
+        SUM(CASE WHEN sync_status = 'pending' OR sync_status = 'not_found' OR sync_status = 'cannot_sync' THEN 1 ELSE 0 END) as pending
+      FROM ringba_sync_logs
+    `).get();
+    
+    const finalRingbaStats = ringbaStatsRecent.total > 0 ? ringbaStatsRecent : ringbaStats;
+
+    const recentActivity = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM campaign_calls 
+      WHERE created_at >= DATETIME('now', '-1 day')
+    `).get();
+
+    const topCallers = db.prepare(`
+      SELECT caller_id, COUNT(*) as call_count, SUM(payout) as total_payout
+      FROM campaign_calls
+      GROUP BY caller_id
+      ORDER BY call_count DESC
+      LIMIT 10
+    `).all();
+
+    const stats = {
+      totalCalls: totalCalls.count || 0,
+      totalAdjustments: totalAdjustments.count || 0,
+      totalPayout: totalPayout.total || 0,
+      callsToday: callsToday.count || 0,
+      callsThisWeek: callsThisWeek.count || 0,
+      recentActivity: recentActivity.count || 0,
+      ringba: {
+        total: finalRingbaStats.total || 0,
+        success: finalRingbaStats.success || 0,
+        failed: finalRingbaStats.failed || 0,
+        pending: finalRingbaStats.pending || 0,
+        successRate: finalRingbaStats.total > 0 
+          ? ((finalRingbaStats.success / finalRingbaStats.total) * 100).toFixed(2)
+          : 0,
+        lastSyncTime: finalRingbaStats.last_sync_time || null
+      },
+      topCallers: topCallers
+    };
+
+    // History data
+    const sessions = db.prepare(`
+      SELECT * FROM scraping_sessions 
+      ORDER BY started_at DESC 
+      LIMIT 50
+    `).all();
+
+    const sessionsWithType = sessions.map(session => {
+      let serviceType = 'unknown';
+      if (session.session_id) {
+        if (session.session_id.startsWith('historical_') || session.session_id.includes('historical')) {
+          serviceType = 'historical';
+        } else if (session.session_id.startsWith('current_') || session.session_id.includes('current')) {
+          serviceType = 'current';
+        }
+      }
+      return { ...session, serviceType };
+    });
+
+    const history = {
+      sessions: sessionsWithType,
+      count: sessionsWithType.length
+    };
+
+    // Activity data
+    const recentCalls = db.prepare(`
+      SELECT * FROM campaign_calls 
+      ORDER BY created_at DESC 
+      LIMIT 20
+    `).all();
+
+    const recentAdjustments = db.prepare(`
+      SELECT * FROM adjustment_details 
+      ORDER BY time_of_call DESC 
+      LIMIT 20
+    `).all();
+
+    const recentSessions = db.prepare(`
+      SELECT * FROM scraping_sessions 
+      ORDER BY started_at DESC 
+      LIMIT 20
+    `).all();
+
+    const activity = {
+      calls: recentCalls,
+      adjustments: recentAdjustments,
+      sessions: recentSessions
+    };
+
+    return {
+      health,
+      stats,
+      history,
+      activity,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error);
+    return null;
+  } finally {
+    db?.close();
+  }
+};
+
 // API Routes
 const routes = {
   // Health status endpoint
@@ -402,7 +600,12 @@ const routes = {
     console.log('[ROOT] Serving dashboard:', {
       buildPath,
       buildExists: fs.existsSync(buildPath),
-      fallbackExists: fs.existsSync(fallbackPath)
+      fallbackExists: fs.existsSync(fallbackPath),
+      requestUrl: req.url,
+      headers: {
+        host: req.headers.host,
+        referer: req.headers.referer
+      }
     });
     
     // Try React build first, fallback to old HTML
@@ -410,15 +613,40 @@ const routes = {
       let html = fs.readFileSync(buildPath, 'utf8');
       console.log('[ROOT] Serving React build, length:', html.length);
       
-      // Ensure base tag is set correctly for path prefix
-      if (!html.includes('<base href=')) {
+      // Fetch all dashboard data from database
+      const dashboardData = fetchAllDashboardData();
+      if (dashboardData) {
+        // Embed data as JSON in HTML
+        const dataScript = `<script id="dashboard-initial-data" type="application/json">${JSON.stringify(dashboardData)}</script>`;
+        html = html.replace('</head>', `  ${dataScript}\n</head>`);
+        console.log('[ROOT] Embedded dashboard data in HTML');
+      } else {
+        console.warn('[ROOT] Could not fetch dashboard data from database');
+      }
+      
+      // Check if base tag exists and is correct
+      const baseTagMatch = html.match(/<base[^>]*href=["']([^"']+)["']/i);
+      if (baseTagMatch) {
+        console.log('[ROOT] Base tag found:', baseTagMatch[1]);
+      } else {
         html = html.replace('<head>', '<head>\n    <base href="/ringba-sync-dashboard/">');
         console.log('[ROOT] Added base tag to HTML');
       }
       
+      // Log asset references in HTML for debugging
+      const scriptMatches = html.match(/src=["']([^"']+\.js)["']/gi);
+      const cssMatches = html.match(/href=["']([^"']+\.css)["']/gi);
+      if (scriptMatches) {
+        console.log('[ROOT] Script references:', scriptMatches);
+      }
+      if (cssMatches) {
+        console.log('[ROOT] CSS references:', cssMatches);
+      }
+      
       res.writeHead(200, { 
         'Content-Type': 'text/html',
-        'Cache-Control': 'no-cache, no-store, must-revalidate'
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'X-Content-Type-Options': 'nosniff'
       });
       res.end(html);
     } else if (fs.existsSync(fallbackPath)) {
@@ -462,6 +690,84 @@ const server = http.createServer((req, res) => {
     pathname = pathname.replace('/ringba-sync-dashboard', '');
   }
 
+  // Check if this is an asset request BEFORE route handling
+  const buildDir = path.join(__dirname, 'dashboard-build');
+  const isAssetRequest = pathname.startsWith('/assets/') || 
+                         pathname.startsWith('/ringba-sync-dashboard/assets/') ||
+                         pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|map|json)$/i);
+  
+  if (isAssetRequest && fs.existsSync(buildDir)) {
+    // Handle both /assets/... and /ringba-sync-dashboard/assets/... paths
+    let filePath = pathname;
+    
+    // Strip /ringba-sync-dashboard prefix if present
+    if (pathname.startsWith('/ringba-sync-dashboard/')) {
+      filePath = pathname.replace('/ringba-sync-dashboard', '');
+    }
+    
+    // Remove leading slash and join with build directory
+    const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+    const fullPath = path.join(buildDir, cleanPath);
+    
+    console.log(`[ASSET] Attempting to serve: ${pathname} -> ${fullPath}`);
+    
+    // Security check: ensure path is within build directory
+    const resolvedPath = path.resolve(fullPath);
+    const resolvedBuildDir = path.resolve(buildDir);
+    if (!resolvedPath.startsWith(resolvedBuildDir)) {
+      console.warn(`[WARN] Security: Path outside build directory: ${pathname}`);
+      sendError(res, 'Not found', 404);
+      return;
+    }
+    
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      const ext = path.extname(fullPath);
+      const contentType = {
+        '.html': 'text/html',
+        '.js': 'application/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon',
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
+        '.ttf': 'font/ttf',
+        '.map': 'application/json'
+      }[ext] || 'application/octet-stream';
+      
+      const fileSize = fs.statSync(fullPath).size;
+      console.log(`[ASSET] ✓ Serving: ${pathname} -> ${fullPath} (${contentType}, ${fileSize} bytes)`);
+      res.writeHead(200, { 
+        'Content-Type': contentType,
+        'Cache-Control': ext === '.map' ? 'no-cache' : 'public, max-age=31536000, immutable',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.end(fs.readFileSync(fullPath));
+      return;
+    } else {
+      console.warn(`[ASSET] ✗ File not found: ${pathname} -> ${fullPath}`);
+      console.warn(`[ASSET]   - File exists: ${fs.existsSync(fullPath)}`);
+      console.warn(`[ASSET]   - Is file: ${fs.existsSync(fullPath) ? fs.statSync(fullPath).isFile() : 'N/A'}`);
+      
+      // Try to list directory contents for debugging
+      const dirPath = path.dirname(fullPath);
+      if (fs.existsSync(dirPath)) {
+        try {
+          const dirContents = fs.readdirSync(dirPath);
+          console.warn(`[ASSET]   - Directory contents (${dirPath}): ${dirContents.join(', ')}`);
+        } catch (e) {
+          console.warn(`[ASSET]   - Could not read directory: ${e.message}`);
+        }
+      } else {
+        console.warn(`[ASSET]   - Directory does not exist: ${dirPath}`);
+      }
+    }
+  }
+  
   // Route handling
   if (routes[pathname]) {
     try {
@@ -471,67 +777,6 @@ const server = http.createServer((req, res) => {
       sendError(res, error.message);
     }
   } else {
-    // Try to serve static files from React build
-    const buildDir = path.join(__dirname, 'dashboard-build');
-    if (fs.existsSync(buildDir)) {
-      // Handle both /assets/... and /ringba-sync-dashboard/assets/... paths
-      let filePath = pathname;
-      
-      // Strip /ringba-sync-dashboard prefix if present
-      if (pathname.startsWith('/ringba-sync-dashboard/')) {
-        filePath = pathname.replace('/ringba-sync-dashboard', '');
-      }
-      
-      // Remove leading slash and join with build directory
-      const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-      const fullPath = path.join(buildDir, cleanPath);
-      
-      // Security check: ensure path is within build directory
-      const resolvedPath = path.resolve(fullPath);
-      const resolvedBuildDir = path.resolve(buildDir);
-      if (!resolvedPath.startsWith(resolvedBuildDir)) {
-        console.warn(`[WARN] Security: Path outside build directory: ${pathname}`);
-        sendError(res, 'Not found', 404);
-        return;
-      }
-      
-      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
-        const ext = path.extname(fullPath);
-        const contentType = {
-          '.html': 'text/html',
-          '.js': 'application/javascript',
-          '.css': 'text/css',
-          '.json': 'application/json',
-          '.png': 'image/png',
-          '.jpg': 'image/jpeg',
-          '.jpeg': 'image/jpeg',
-          '.svg': 'image/svg+xml',
-          '.ico': 'image/x-icon',
-          '.woff': 'font/woff',
-          '.woff2': 'font/woff2',
-          '.ttf': 'font/ttf',
-          '.map': 'application/json'
-        }[ext] || 'application/octet-stream';
-        
-        console.log(`[ASSET] Serving: ${pathname} -> ${fullPath} (${contentType}, ${fs.statSync(fullPath).size} bytes)`);
-        res.writeHead(200, { 
-          'Content-Type': contentType,
-          'Cache-Control': ext === '.map' ? 'no-cache' : 'public, max-age=31536000, immutable'
-        });
-        res.end(fs.readFileSync(fullPath));
-        return;
-      } else {
-        console.warn(`[ASSET] File not found: ${pathname} -> ${fullPath} (exists: ${fs.existsSync(fullPath)})`);
-        // Try to list directory contents for debugging
-        if (fs.existsSync(path.dirname(fullPath))) {
-          const dirContents = fs.readdirSync(path.dirname(fullPath));
-          console.warn(`[ASSET] Directory contents: ${dirContents.join(', ')}`);
-        }
-      }
-    } else {
-      console.warn(`[ASSET] Build directory not found: ${buildDir}`);
-    }
-    
     // Fallback: try serving index.html for SPA routing
     if (pathname.startsWith('/ringba-sync-dashboard/') || pathname === '/ringba-sync-dashboard') {
       const indexPath = path.join(__dirname, 'dashboard-build', 'index.html');
