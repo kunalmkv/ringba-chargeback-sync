@@ -362,7 +362,13 @@ const server = http.createServer((req, res) => {
   let pathname = parsedUrl.pathname;
 
   // Debug logging (can be removed in production)
-  console.log(`[${req.method}] ${pathname}`);
+  console.log(`[${req.method}] ${pathname}`, {
+    headers: {
+      host: req.headers.host,
+      'x-forwarded-for': req.headers['x-forwarded-for'],
+      'x-forwarded-proto': req.headers['x-forwarded-proto']
+    }
+  });
 
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
