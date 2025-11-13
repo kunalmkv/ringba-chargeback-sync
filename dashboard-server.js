@@ -897,6 +897,9 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith('/ringba-sync-dashboard/api/')) {
     pathname = pathname.replace('/ringba-sync-dashboard', '');
   }
+  
+  // Normalize pathname: remove trailing slash and ensure it starts with /
+  pathname = pathname.replace(/\/$/, '') || '/';
 
   // Check if this is an asset request BEFORE route handling
   const buildDir = path.join(__dirname, 'dashboard-build');
@@ -977,14 +980,20 @@ const server = http.createServer((req, res) => {
   }
   
   // Route handling
+  // Try exact match first
   if (routes[pathname]) {
     try {
+      console.log(`[ROUTE] Matched: ${pathname}`);
       routes[pathname](req, res);
     } catch (error) {
       console.error(`[ERROR] Route ${pathname}:`, error.message);
       sendError(res, error.message);
     }
   } else {
+    // Debug: log available routes
+    console.warn(`[WARN] Route not found: ${pathname}`);
+    console.warn(`[DEBUG] Available routes: ${Object.keys(routes).join(', ')}`);
+    
     // Fallback: try serving index.html for SPA routing
     if (pathname.startsWith('/ringba-sync-dashboard/') || pathname === '/ringba-sync-dashboard') {
       const indexPath = path.join(__dirname, 'dashboard-build', 'index.html');
@@ -996,7 +1005,6 @@ const server = http.createServer((req, res) => {
       }
     }
     
-    console.warn(`[WARN] Route not found: ${pathname}`);
     sendError(res, 'Not found', 404);
   }
 });
