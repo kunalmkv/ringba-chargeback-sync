@@ -6,7 +6,7 @@ import Statistics from './components/Statistics';
 import RingbaStatus from './components/RingbaStatus';
 import ServiceHistory from './components/ServiceHistory';
 import RecentActivity from './components/RecentActivity';
-import TopCallers from './components/TopCallers';
+import ChargebackTracker from './components/ChargebackTracker';
 import Footer from './components/Footer';
 
 function App() {
@@ -15,7 +15,7 @@ function App() {
     stats,
     history,
     activity,
-    topCallers,
+    chargeback,
     loading,
     error,
     lastUpdated,
@@ -49,9 +49,9 @@ function App() {
         <HealthStatus health={health} />
         <Statistics stats={stats} />
         <RingbaStatus stats={stats} />
+        <ChargebackTracker chargebackData={chargeback} loading={loading} />
         <ServiceHistory history={history} onFilterChange={handleHistoryFilter} />
         <RecentActivity activity={activity} />
-        <TopCallers topCallers={topCallers} />
       </main>
 
       <Footer lastUpdated={lastUpdated} />

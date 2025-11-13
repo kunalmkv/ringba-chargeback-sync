@@ -11,7 +11,7 @@ const HealthStatus = ({ health }) => {
     );
   }
 
-  const { historical, current, ringba } = health.services;
+  const { historical, historicalAPI, current, currentAPI, ringba } = health.services;
 
   const ServiceCard = ({ icon, title, serviceData }) => {
     const status = serviceData?.status || serviceData?.lastStatus || 'unknown';
@@ -38,8 +38,10 @@ const HealthStatus = ({ health }) => {
     <section className="section health-section">
       <h2>🏥 Service Health Status</h2>
       <div className="health-grid">
-        <ServiceCard icon="📅" title="Historical Service" serviceData={historical} />
-        <ServiceCard icon="⚡" title="Current Day Service" serviceData={current} />
+        <ServiceCard icon="📅" title="Historical Service (STATIC)" serviceData={historical} />
+        <ServiceCard icon="📅" title="Historical Service (API)" serviceData={historicalAPI} />
+        <ServiceCard icon="⚡" title="Current Day Service (STATIC)" serviceData={current} />
+        <ServiceCard icon="⚡" title="Current Day Service (API)" serviceData={currentAPI} />
         <ServiceCard icon="🔄" title="Ringba Sync" serviceData={ringba} />
         <div className="health-card">
           <div className="health-icon">🔐</div>

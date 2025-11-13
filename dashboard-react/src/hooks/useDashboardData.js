@@ -24,7 +24,7 @@ export const useDashboardData = () => {
   const [stats, setStats] = useState(initialData?.stats || null);
   const [history, setHistory] = useState(initialData?.history?.sessions || null);
   const [activity, setActivity] = useState(initialData?.activity || { calls: [], adjustments: [], sessions: [] });
-  const [topCallers, setTopCallers] = useState(initialData?.stats?.topCallers || []);
+  const [chargeback, setChargeback] = useState(initialData?.chargeback || null);
   const [loading, setLoading] = useState(!initialData); // Only loading if no initial data
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(initialData?.timestamp ? new Date(initialData.timestamp) : null);
@@ -44,7 +44,6 @@ export const useDashboardData = () => {
     try {
       const data = await api.stats();
       setStats(data);
-      setTopCallers(data.topCallers || []);
       return data;
     } catch (err) {
       console.error('Error loading stats:', err);
@@ -78,6 +77,17 @@ export const useDashboardData = () => {
     }
   }, []);
 
+  const loadChargeback = useCallback(async (limit = 30) => {
+    try {
+      const data = await api.chargeback(limit);
+      setChargeback(data);
+      return data;
+    } catch (err) {
+      console.error('Error loading chargeback data:', err);
+      throw err;
+    }
+  }, []);
+
   const loadAllData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -86,7 +96,8 @@ export const useDashboardData = () => {
         loadHealth(),
         loadStats(),
         loadHistory(),
-        loadActivity()
+        loadActivity(),
+        loadChargeback()
       ]);
       setLastUpdated(new Date());
     } catch (err) {
@@ -94,7 +105,7 @@ export const useDashboardData = () => {
     } finally {
       setLoading(false);
     }
-  }, [loadHealth, loadStats, loadHistory, loadActivity]);
+  }, [loadHealth, loadStats, loadHistory, loadActivity, loadChargeback]);
 
   useEffect(() => {
     // Get initial data on mount (in case it wasn't available during hook initialization)
@@ -117,13 +128,14 @@ export const useDashboardData = () => {
     stats,
     history,
     activity,
-    topCallers,
+    chargeback,
     loading,
     error,
     lastUpdated,
     loadAllData,
     loadHistory,
-    loadActivity
+    loadActivity,
+    loadChargeback
   };
 };
 

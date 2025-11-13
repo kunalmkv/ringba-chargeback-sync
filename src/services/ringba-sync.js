@@ -1,4 +1,4 @@
-// Service to sync adjustment data from campaign_calls to Ringba
+// Service to sync adjustment data from elocal_call_data to Ringba
 import * as R from 'ramda';
 import * as E from 'fp-ts/lib/Either.js';
 import * as TE from 'fp-ts/lib/TaskEither.js';
@@ -11,7 +11,7 @@ import { findCallByCallerIdAndTime, updateCallPayment, resolvePaymentLegs } from
 // For API category: all rows (need to check payout against Ringba)
 const getPendingSyncRows = (config) => (category = null) =>
   withDatabase(config)(async (db) => {
-    let query = '';
+    let query = '';       
     let params = [];
     
     if (category === 'API') {
@@ -21,7 +21,7 @@ const getPendingSyncRows = (config) => (category = null) =>
           id, date_of_call, campaign_phone, caller_id, payout,
           adjustment_amount, adjustment_classification, category,
           ringba_inbound_call_id, ringba_sync_status
-        FROM campaign_calls
+        FROM elocal_call_data
         WHERE category = 'API'
           AND (ringba_sync_status IS NULL 
                OR ringba_sync_status = ''
@@ -38,7 +38,7 @@ const getPendingSyncRows = (config) => (category = null) =>
           id, date_of_call, campaign_phone, caller_id, payout,
           adjustment_amount, adjustment_classification, category,
           ringba_inbound_call_id, ringba_sync_status
-        FROM campaign_calls
+        FROM elocal_call_data
         WHERE category = 'STATIC'
           AND adjustment_amount IS NOT NULL
           AND (ringba_sync_status IS NULL 
@@ -56,7 +56,7 @@ const getPendingSyncRows = (config) => (category = null) =>
           id, date_of_call, campaign_phone, caller_id, payout,
           adjustment_amount, adjustment_classification, category,
           ringba_inbound_call_id, ringba_sync_status
-        FROM campaign_calls
+        FROM elocal_call_data
         WHERE (
           (category = 'STATIC' AND adjustment_amount IS NOT NULL)
           OR (category = 'API')
@@ -79,7 +79,7 @@ const getPendingSyncRows = (config) => (category = null) =>
 const updateSyncStatus = (config) => (rowId) => (status, inboundCallId, response) =>
   withDatabase(config)(async (db) => {
     const stmt = db.prepare(`
-      UPDATE campaign_calls
+      UPDATE elocal_call_data
       SET ringba_sync_status = ?,
           ringba_inbound_call_id = COALESCE(?, ringba_inbound_call_id),
           ringba_sync_at = CURRENT_TIMESTAMP,

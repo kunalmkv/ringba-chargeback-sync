@@ -352,11 +352,16 @@ const main = async () => {
       const config = createConfig();
       console.log('[INFO] Starting multi-scheduler service...');
       console.log('[INFO] This will run:');
-      console.log('  - Historical data service: Daily at 12:00 AM IST (midnight) - past 10 days, STATIC category');
-      console.log('  - Current day service: Every 3 hours from 9 PM to 6 AM IST (21:00, 00:00, 03:00, 06:00) - STATIC category');
+      console.log('  - Historical data service (STATIC): Daily at 12:00 AM IST (midnight) - past 10 days');
+      console.log('  - Historical data service (API): Daily at 12:30 AM IST - past 10 days');
+      console.log('  - Current day service (STATIC): Every 3 hours from 9 PM to 6 AM IST (21:00, 00:00, 03:00, 06:00)');
+      console.log('  - Current day service (API): Every 3 hours from 9:30 PM to 6:30 AM IST (21:30, 00:30, 03:30, 06:30)');
       console.log('  - Auth refresh: Once a week on Sunday at 2:00 AM IST');
+      if (config.ringbaAccountId && config.ringbaApiToken) {
+        console.log('  - Ringba cost sync: Daily at 7:00 AM IST');
+      }
       if (config.ringbaSyncEnabled && config.ringbaAccountId && config.ringbaApiToken) {
-        console.log('  - Ringba sync: Daily at 6:00 AM IST (all categories)');
+        console.log('  - Ringba sync: Daily at 8:00 AM IST (all categories)');
       }
       
       const result = await TE.getOrElse(() => {
@@ -501,6 +506,86 @@ const main = async () => {
         console.log('[ERROR] Auth refresh failed');
       }
       process.exit(0);
+    } else if (command === 'ringba-cost-sync' || command === 'sync-ringba-cost') {
+  console.log('[INFO] Starting Ringba cost sync service...');
+  const config = createConfig();
+  const { syncRingbaCostForDateRange } = await import('./services/ringba-cost-sync.js');
+  
+  // Parse date range from arguments or use defaults
+  const startDateArg = process.argv.find(arg => arg.startsWith('--start='));
+  const endDateArg = process.argv.find(arg => arg.startsWith('--end='));
+  
+  let startDate, endDate;
+  if (startDateArg && endDateArg) {
+    startDate = startDateArg.split('=')[1];
+    endDate = endDateArg.split('=')[1];
+  } else {
+    // Default to last 30 days
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
+    startDate = start.toISOString().split('T')[0];
+    endDate = end.toISOString().split('T')[0];
+  }
+  
+  console.log(`[INFO] Date range: ${startDate} to ${endDate}`);
+  
+  const resultEither = await syncRingbaCostForDateRange(config)(startDate, endDate)();
+  
+  if (resultEither._tag === 'Right') {
+    const result = resultEither.right;
+    console.log('\n========================================');
+    console.log('✅ Ringba Cost Sync Completed');
+    console.log('========================================');
+    console.log(`Total Calls: ${result.summary.totalCalls}`);
+    console.log(`Total Cost: $${result.summary.totalCost.toFixed(2)}`);
+    console.log(`Total Revenue: $${result.summary.totalRevenue.toFixed(2)}`);
+    console.log('');
+    console.log('By Category:');
+    console.log(`  STATIC: ${result.summary.byCategory.STATIC.calls} calls, Cost: $${result.summary.byCategory.STATIC.cost.toFixed(2)}, Revenue: $${result.summary.byCategory.STATIC.revenue.toFixed(2)}`);
+    console.log(`  API: ${result.summary.byCategory.API.calls} calls, Cost: $${result.summary.byCategory.API.cost.toFixed(2)}, Revenue: $${result.summary.byCategory.API.revenue.toFixed(2)}`);
+    console.log('');
+    console.log('By Target:');
+    for (const [targetId, data] of Object.entries(result.summary.byTarget)) {
+      console.log(`  ${data.targetName} (${data.category}): ${data.calls} calls, Cost: $${data.cost.toFixed(2)}, Revenue: $${data.revenue.toFixed(2)}`);
+    }
+    console.log('');
+    console.log('Database:');
+    console.log(`  Inserted: ${result.summary.saved.inserted}`);
+    console.log(`  Updated: ${result.summary.saved.updated}`);
+    console.log(`  Total: ${result.summary.saved.total}`);
+    console.log('========================================\n');
+    process.exit(0);
+  } else {
+    console.error('❌ Error:', resultEither.left.message);
+    process.exit(1);
+  }
+} else if (command === 'revenue-sync' || command === 'sync-revenue') {
+      console.log('[INFO] Starting revenue sync service...');
+      
+      const config = createConfig();
+      const { syncRevenueForLastDays } = await import('./services/revenue-sync.js');
+      
+      // Get days parameter from command line (default: 30)
+      const daysArg = process.argv.find(arg => arg.startsWith('--days='));
+      const days = daysArg ? parseInt(daysArg.split('=')[1]) : 30;
+      
+      const resultEither = await syncRevenueForLastDays(config)(days)();
+      
+      if (resultEither._tag === 'Right') {
+        const result = resultEither.right;
+        console.log('[SUCCESS] Revenue sync completed successfully!');
+        console.log('  - Days processed:', result.daysProcessed);
+        console.log('  - Ringba cost records:', result.ringbaCostRecords || 0);
+        console.log('  - Elocal calls:', result.elocalCalls || 0);
+        console.log('  - Date range:', result.dateRange.startDate, 'to', result.dateRange.endDate);
+        process.exit(0);
+      } else {
+        const error = resultEither.left;
+        const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+        console.error('[ERROR] Revenue sync failed:', errorMsg);
+        process.exit(1);
+      }
     } else if (command === 'ringba-sync' || command === 'sync-ringba') {
       console.log('[INFO] Running Ringba sync service (all categories)...');
       const { syncAdjustmentsToRingba } = await import('./services/ringba-sync.js');
@@ -717,6 +802,7 @@ const main = async () => {
       console.log('  npm start ringba-sync       - Run Ringba sync (all categories)');
       console.log('  npm start ringba-sync --category STATIC  - Run Ringba sync (STATIC only)');
       console.log('  npm start ringba-sync --category API      - Run Ringba sync (API only)');
+      console.log('  npm start revenue-sync      - Sync revenue summary (Ringba + Elocal by date/category)');
       console.log('  npm start multi-scheduler    - Start multi-scheduler (scheduled services)');
       console.log('  npm start scheduler          - Start legacy scheduler service');
       console.log('  npm run refresh-auth         - Refresh auth session (3-day TTL)');

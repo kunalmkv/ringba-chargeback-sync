@@ -8,7 +8,9 @@ import { createLogger } from '../utils/error-handling.js';
 import { createConfig, initializeDatabase } from '../index.js';
 import { 
   scrapeHistoricalData, 
-  scrapeCurrentDayData, 
+  scrapeCurrentDayData,
+  scrapeHistoricalDataAPI,
+  scrapeCurrentDayDataAPI,
   getServiceInfo 
 } from './elocal-services.js';
 import { refreshAuthSession } from './auth-refresh.js';
@@ -137,6 +139,82 @@ export class MultiScheduler {
     return E.right(task);
   }
 
+  // Schedule historical data service for API category (runs daily at 12:30 AM IST - 30 minutes after STATIC)
+  scheduleHistoricalAPIService() {
+    const cronExpression = '30 0 * * *'; // Daily at 12:30 AM IST
+    
+    if (!cron.validate(cronExpression)) {
+      return E.left(new Error(`Invalid cron expression for historical API service: ${cronExpression}`));
+    }
+
+    const task = cron.schedule(
+      cronExpression,
+      () => this.runHistoricalAPIJob(),
+      {
+        scheduled: false,
+        timezone: 'Asia/Kolkata' // Indian Standard Time (IST)
+      }
+    );
+
+    this.scheduledTasks.set('historicalAPI', task);
+    this.jobStats.set('historicalAPI', {
+      name: 'Historical Data Service (API)',
+      cronExpression,
+      totalRuns: 0,
+      successfulRuns: 0,
+      failedRuns: 0,
+      lastRun: null,
+      nextRun: this.getNextRunTime(cronExpression)
+    });
+
+    this.logger.info('Historical API service scheduled', {
+      cron: cronExpression,
+      timezone: 'Asia/Kolkata (IST)',
+      schedule: 'Daily at 12:30 AM IST (30 minutes after STATIC historical)',
+      description: 'Scrapes past 10 days of data for API category'
+    });
+
+    return E.right(task);
+  }
+
+  // Schedule current day service for API category (runs every 3 hours from 9:30 PM to 6:30 AM IST - 30 minutes after STATIC)
+  scheduleCurrentDayAPIService() {
+    const cronExpression = '30 21,0,3,6 * * *'; // Every 3 hours: 9:30 PM, 12:30 AM, 3:30 AM, 6:30 AM IST
+    
+    if (!cron.validate(cronExpression)) {
+      return E.left(new Error(`Invalid cron expression for current day API service: ${cronExpression}`));
+    }
+
+    const task = cron.schedule(
+      cronExpression,
+      () => this.runCurrentDayAPIJob(),
+      {
+        scheduled: false,
+        timezone: 'Asia/Kolkata' // Indian Standard Time (IST)
+      }
+    );
+
+    this.scheduledTasks.set('currentAPI', task);
+    this.jobStats.set('currentAPI', {
+      name: 'Current Day Service (API)',
+      cronExpression,
+      totalRuns: 0,
+      successfulRuns: 0,
+      failedRuns: 0,
+      lastRun: null,
+      nextRun: this.getNextRunTime(cronExpression)
+    });
+
+    this.logger.info('Current day API service scheduled', {
+      cron: cronExpression,
+      timezone: 'Asia/Kolkata (IST)',
+      schedule: 'Every 3 hours from 9:30 PM to 6:30 AM IST (21:30, 00:30, 03:30, 06:30)',
+      description: 'Scrapes current day data for API category'
+    });
+
+    return E.right(task);
+  }
+
   // Schedule auth refresh (once a week on Sunday at 2 AM IST)
   scheduleAuthRefresh() {
     const cronExpression = '0 2 * * 0'; // Every Sunday at 2:00 AM
@@ -177,14 +255,87 @@ export class MultiScheduler {
     return E.right(task);
   }
 
-  // Schedule Ringba sync service (runs daily at 6:00 AM IST)
+  // Schedule revenue sync service (runs daily at 7:00 AM IST)
+  scheduleRevenueSync() {
+    const cronExpression = '0 7 * * *'; // Daily at 7:00 AM IST
+    if (!cron.validate(cronExpression)) {
+      return E.left(new Error(`Invalid cron expression for revenue sync: ${cronExpression}`));
+    }
+
+    const task = cron.schedule(
+      cronExpression,
+      () => this.runRevenueSyncJob(),
+      {
+        scheduled: false,
+        timezone: 'Asia/Kolkata' // Indian Standard Time (IST)
+      }
+    );
+
+    this.scheduledTasks.set('revenueSync', task);
+    this.jobStats.set('revenueSync', {
+      name: 'Revenue Sync',
+      cronExpression,
+      totalRuns: 0,
+      successfulRuns: 0,
+      failedRuns: 0,
+      lastRun: null,
+      nextRun: this.getNextRunTime(cronExpression)
+    });
+    this.logger.info('Revenue sync scheduled', { 
+      cron: cronExpression,
+      timezone: 'Asia/Kolkata (IST)',
+      schedule: 'Daily at 7:00 AM IST'
+    });
+    return E.right(task);
+  }
+
+  // Schedule Ringba cost sync service (runs daily at 7:00 AM IST - 1 hour before ringba-sync)
+  scheduleRingbaCostSync() {
+    if (!this.config.ringbaAccountId || !this.config.ringbaApiToken) {
+      this.logger.info('Ringba cost sync skipped: credentials missing');
+      return E.right(null);
+    }
+
+    const cronExpression = '0 7 * * *'; // Daily at 7:00 AM IST
+    if (!cron.validate(cronExpression)) {
+      return E.left(new Error(`Invalid cron expression for Ringba cost sync: ${cronExpression}`));
+    }
+
+    const task = cron.schedule(
+      cronExpression,
+      () => this.runRingbaCostSyncJob(),
+      {
+        scheduled: false,
+        timezone: 'Asia/Kolkata' // Indian Standard Time (IST)
+      }
+    );
+
+    this.scheduledTasks.set('ringbaCostSync', task);
+    this.jobStats.set('ringbaCostSync', {
+      name: 'Ringba Cost Sync',
+      cronExpression,
+      totalRuns: 0,
+      successfulRuns: 0,
+      failedRuns: 0,
+      lastRun: null,
+      nextRun: this.getNextRunTime(cronExpression)
+    });
+    this.logger.info('Ringba cost sync scheduled', { 
+      cron: cronExpression,
+      timezone: 'Asia/Kolkata (IST)',
+      schedule: 'Daily at 7:00 AM IST'
+    });
+    return E.right(task);
+  }
+
+  // Schedule Ringba sync service (runs daily at 8:00 AM IST)
   scheduleRingbaSync() {
     if (!this.config.ringbaSyncEnabled || !this.config.ringbaAccountId || !this.config.ringbaApiToken) {
       this.logger.info('Ringba sync skipped: not enabled or credentials missing');
       return E.right(null);
     }
 
-    const cronExpression = '0 6 * * *'; // Daily at 6:00 AM IST
+    const cronExpression = '0 8 * * *'; // Daily at 8:00 AM IST
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for Ringba sync: ${cronExpression}`));
     }
@@ -211,7 +362,7 @@ export class MultiScheduler {
     this.logger.info('Ringba sync scheduled', { 
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Daily at 6:00 AM IST'
+      schedule: 'Daily at 8:00 AM IST'
     });
     return E.right(task);
   }
@@ -268,6 +419,128 @@ export class MultiScheduler {
     }
   }
 
+  // Run historical API job
+  async runHistoricalAPIJob() {
+    const jobId = `historicalAPI_${Date.now()}`;
+    const stats = this.jobStats.get('historicalAPI');
+    
+    stats.totalRuns++;
+    stats.lastRun = new Date().toISOString();
+
+    try {
+      const result = await TE.getOrElse(() => ({ error: 'Job failed' }))(
+        executeJob(this.config)(this.logger)(jobId)(scrapeHistoricalDataAPI)
+      )();
+      
+      if (result.error) {
+        stats.failedRuns++;
+        this.logger.error(`Historical API job ${jobId} failed: ${result.error}`);
+      } else {
+        stats.successfulRuns++;
+        this.logger.info(`Historical API job ${jobId} completed successfully`);
+      }
+    } catch (error) {
+      stats.failedRuns++;
+      this.logger.error(`Historical API job ${jobId} failed with exception: ${error.message}`);
+    }
+  }
+
+  // Run current day API job
+  async runCurrentDayAPIJob() {
+    const jobId = `currentAPI_${Date.now()}`;
+    const stats = this.jobStats.get('currentAPI');
+    
+    stats.totalRuns++;
+    stats.lastRun = new Date().toISOString();
+
+    try {
+      const result = await TE.getOrElse(() => ({ error: 'Job failed' }))(
+        executeJob(this.config)(this.logger)(jobId)(scrapeCurrentDayDataAPI)
+      )();
+      
+      if (result.error) {
+        stats.failedRuns++;
+        this.logger.error(`Current day API job ${jobId} failed: ${result.error}`);
+      } else {
+        stats.successfulRuns++;
+        this.logger.info(`Current day API job ${jobId} completed successfully`);
+      }
+    } catch (error) {
+      stats.failedRuns++;
+      this.logger.error(`Current day API job ${jobId} failed with exception: ${error.message}`);
+    }
+  }
+
+  // Run revenue sync job
+  async runRevenueSyncJob() {
+    const jobId = `revenueSync_${Date.now()}`;
+    const stats = this.jobStats.get('revenueSync');
+    
+    if (!stats) {
+      this.logger.error('Revenue sync stats not found');
+      return;
+    }
+    
+    stats.totalRuns++;
+    stats.lastRun = new Date().toISOString();
+
+    try {
+      this.logger.info(`Running revenue sync job: ${jobId}`);
+      const { syncRevenueForLastDays } = await import('./revenue-sync.js');
+      const resultEither = await syncRevenueForLastDays(this.config)(30)(); // Last 30 days
+      
+      if (resultEither._tag === 'Right') {
+        const result = resultEither.right;
+        stats.successfulRuns++;
+        this.logger.info(`Revenue sync job ${jobId} completed successfully: ${result.daysProcessed} days processed, ${result.matchedCalls} calls matched`);
+      } else {
+        stats.failedRuns++;
+        const error = resultEither.left;
+        const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+        this.logger.error(`Revenue sync job ${jobId} failed: ${errorMsg}`);
+      }
+    } catch (error) {
+      stats.failedRuns++;
+      this.logger.error(`Revenue sync job ${jobId} failed with exception: ${error.message}`);
+    }
+  }
+
+  // Run Ringba cost sync job
+  async runRingbaCostSyncJob() {
+    const jobId = `ringbaCostSync_${Date.now()}`;
+    const stats = this.jobStats.get('ringbaCostSync');
+    
+    if (!stats) {
+      this.logger.error('Ringba cost sync stats not found');
+      return;
+    }
+    
+    stats.totalRuns++;
+    stats.lastRun = new Date().toISOString();
+
+    try {
+      this.logger.info(`Running Ringba cost sync job: ${jobId}`);
+      const { syncRingbaCostForLastDays } = await import('./ringba-cost-sync.js');
+      
+      // Sync last 30 days (will skip dates that already have data)
+      const resultEither = await syncRingbaCostForLastDays(this.config)(30)();
+      
+      if (resultEither._tag === 'Right') {
+        const result = resultEither.right;
+        stats.successfulRuns++;
+        this.logger.info(`Ringba cost sync job ${jobId} completed successfully: ${result.summary.totalCalls} calls processed, ${result.summary.saved.inserted} inserted, ${result.summary.saved.updated} updated`);
+      } else {
+        stats.failedRuns++;
+        const error = resultEither.left;
+        const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+        this.logger.error(`Ringba cost sync job ${jobId} failed: ${errorMsg}`);
+      }
+    } catch (error) {
+      stats.failedRuns++;
+      this.logger.error(`Ringba cost sync job ${jobId} failed with exception: ${error.message}`);
+    }
+  }
+
   // Run Ringba sync job
   async runRingbaSyncJob() {
     const jobId = `ringbaSync_${Date.now()}`;
@@ -311,10 +584,14 @@ export class MultiScheduler {
     // Schedule all services
     const historicalResult = this.scheduleHistoricalService();
     const currentResult = this.scheduleCurrentDayService();
+    const historicalAPIResult = this.scheduleHistoricalAPIService();
+    const currentAPIResult = this.scheduleCurrentDayAPIService();
     const authResult = this.scheduleAuthRefresh();
+    const ringbaCostResult = this.scheduleRingbaCostSync();
     const ringbaResult = this.scheduleRingbaSync();
+    const revenueResult = this.scheduleRevenueSync();
 
-    if (historicalResult._tag === 'Left' || currentResult._tag === 'Left' || authResult._tag === 'Left' || (ringbaResult && ringbaResult._tag === 'Left')) {
+    if (historicalResult._tag === 'Left' || currentResult._tag === 'Left' || historicalAPIResult._tag === 'Left' || currentAPIResult._tag === 'Left' || authResult._tag === 'Left' || (ringbaCostResult && ringbaCostResult._tag === 'Left') || (ringbaResult && ringbaResult._tag === 'Left') || (revenueResult && revenueResult._tag === 'Left')) {
       return E.left(new Error('Failed to schedule services'));
     }
 
@@ -416,6 +693,28 @@ export class MultiScheduler {
           next.setHours(hours[0], 0, 0, 0);
         }
         return next.toISOString();
+      } else if (cronExpression === '30 0 * * *') {
+        // Every day at 12:30 AM IST
+        const next = new Date(now);
+        next.setHours(0, 30, 0, 0);
+        if (next <= now) {
+          next.setDate(next.getDate() + 1);
+        }
+        return next.toISOString();
+      } else if (cronExpression === '30 21,0,3,6 * * *') {
+        // Every 3 hours from 9:30 PM to 6:30 AM IST (21:30, 00:30, 03:30, 06:30)
+        const hours = [21, 0, 3, 6];
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        let nextHour = hours.find(h => h > currentHour) || hours[0];
+        const next = new Date(now);
+        next.setHours(nextHour, 30, 0, 0);
+        if (next <= now) {
+          // If we've passed all hours today, go to first hour tomorrow
+          next.setDate(next.getDate() + 1);
+          next.setHours(hours[0], 30, 0, 0);
+        }
+        return next.toISOString();
       } else if (cronExpression === '0 2 * * 0') {
         // Every Sunday at 2:00 AM IST
         const next = new Date(now);
@@ -426,10 +725,18 @@ export class MultiScheduler {
           next.setDate(next.getDate() + 7);
         }
         return next.toISOString();
-      } else if (cronExpression === '0 6 * * *') {
-        // Every day at 6:00 AM IST
+      } else if (cronExpression === '0 7 * * *') {
+        // Every day at 7:00 AM IST
         const next = new Date(now);
-        next.setHours(6, 0, 0, 0);
+        next.setHours(7, 0, 0, 0);
+        if (next <= now) {
+          next.setDate(next.getDate() + 1);
+        }
+        return next.toISOString();
+      } else if (cronExpression === '0 8 * * *') {
+        // Every day at 8:00 AM IST
+        const next = new Date(now);
+        next.setHours(8, 0, 0, 0);
         if (next <= now) {
           next.setDate(next.getDate() + 1);
         }

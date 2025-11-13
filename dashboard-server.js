@@ -47,17 +47,36 @@ const fetchAllDashboardData = () => {
   }
 
   try {
-    // Health data
+    // Health data - get last runs for STATIC and API categories separately
+    // Use case-insensitive matching for session_id
     const lastHistorical = db.prepare(`
       SELECT * FROM scraping_sessions 
-      WHERE session_id LIKE '%historical%' 
+      WHERE LOWER(session_id) LIKE '%historical%' 
+        AND (LOWER(session_id) LIKE '%static%' OR LOWER(session_id) NOT LIKE '%api%')
+      ORDER BY started_at DESC 
+      LIMIT 1
+    `).get();
+
+    const lastHistoricalAPI = db.prepare(`
+      SELECT * FROM scraping_sessions 
+      WHERE LOWER(session_id) LIKE '%historical%' 
+        AND LOWER(session_id) LIKE '%api%'
       ORDER BY started_at DESC 
       LIMIT 1
     `).get();
 
     const lastCurrent = db.prepare(`
       SELECT * FROM scraping_sessions 
-      WHERE session_id LIKE '%current%' 
+      WHERE LOWER(session_id) LIKE '%current%' 
+        AND (LOWER(session_id) LIKE '%static%' OR LOWER(session_id) NOT LIKE '%api%')
+      ORDER BY started_at DESC 
+      LIMIT 1
+    `).get();
+
+    const lastCurrentAPI = db.prepare(`
+      SELECT * FROM scraping_sessions 
+      WHERE LOWER(session_id) LIKE '%current%' 
+        AND LOWER(session_id) LIKE '%api%'
       ORDER BY started_at DESC 
       LIMIT 1
     `).get();
@@ -88,10 +107,20 @@ const fetchAllDashboardData = () => {
           status: lastHistorical?.status || 'unknown',
           lastStatus: lastHistorical?.status || 'unknown'
         },
+        historicalAPI: {
+          lastRun: lastHistoricalAPI?.started_at || null,
+          status: lastHistoricalAPI?.status || 'unknown',
+          lastStatus: lastHistoricalAPI?.status || 'unknown'
+        },
         current: {
           lastRun: lastCurrent?.started_at || null,
           status: lastCurrent?.status || 'unknown',
           lastStatus: lastCurrent?.status || 'unknown'
+        },
+        currentAPI: {
+          lastRun: lastCurrentAPI?.started_at || null,
+          status: lastCurrentAPI?.status || 'unknown',
+          lastStatus: lastCurrentAPI?.status || 'unknown'
         },
         ringba: {
           lastRun: lastRingbaSync?.sync_completed_at || lastRingbaSync?.sync_attempted_at || null,
@@ -103,17 +132,17 @@ const fetchAllDashboardData = () => {
     };
 
     // Stats data
-    const totalCalls = db.prepare(`SELECT COUNT(*) as count FROM campaign_calls`).get();
+    const totalCalls = db.prepare(`SELECT COUNT(*) as count FROM elocal_call_data`).get();
     const totalAdjustments = db.prepare(`SELECT COUNT(*) as count FROM adjustment_details`).get();
-    const totalPayout = db.prepare(`SELECT SUM(payout) as total FROM campaign_calls`).get();
+    const totalPayout = db.prepare(`SELECT SUM(payout) as total FROM elocal_call_data`).get();
     const callsToday = db.prepare(`
       SELECT COUNT(*) as count 
-      FROM campaign_calls 
+      FROM elocal_call_data 
       WHERE DATE(date_of_call) = DATE('now')
     `).get();
     const callsThisWeek = db.prepare(`
       SELECT COUNT(*) as count 
-      FROM campaign_calls 
+      FROM elocal_call_data 
       WHERE DATE(date_of_call) >= DATE('now', '-7 days')
     `).get();
 
@@ -141,17 +170,9 @@ const fetchAllDashboardData = () => {
 
     const recentActivity = db.prepare(`
       SELECT COUNT(*) as count 
-      FROM campaign_calls 
+      FROM elocal_call_data 
       WHERE created_at >= DATETIME('now', '-1 day')
     `).get();
-
-    const topCallers = db.prepare(`
-      SELECT caller_id, COUNT(*) as call_count, SUM(payout) as total_payout
-      FROM campaign_calls
-      GROUP BY caller_id
-      ORDER BY call_count DESC
-      LIMIT 10
-    `).all();
 
     const stats = {
       totalCalls: totalCalls.count || 0,
@@ -169,8 +190,7 @@ const fetchAllDashboardData = () => {
           ? ((finalRingbaStats.success / finalRingbaStats.total) * 100).toFixed(2)
           : 0,
         lastSyncTime: finalRingbaStats.last_sync_time || null
-      },
-      topCallers: topCallers
+      }
     };
 
     // History data
@@ -199,7 +219,7 @@ const fetchAllDashboardData = () => {
 
     // Activity data
     const recentCalls = db.prepare(`
-      SELECT * FROM campaign_calls 
+      SELECT * FROM elocal_call_data 
       ORDER BY created_at DESC 
       LIMIT 20
     `).all();
@@ -222,11 +242,81 @@ const fetchAllDashboardData = () => {
       sessions: recentSessions
     };
 
+    // Chargeback data - fetch last 30 days
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    const startDateStr = startDate.toISOString().split('T')[0];
+    const endDateStr = endDate.toISOString().split('T')[0];
+    
+    const revenueData = db.prepare(`
+      SELECT * FROM revenue_summary
+      WHERE date >= date(?) AND date <= date(?)
+      ORDER BY date DESC
+    `).all(startDateStr, endDateStr);
+    
+    const chargebackRows = revenueData.map(row => {
+      const ringbaStatic = parseFloat(row.ringba_static || 0);
+      const ringbaApi = parseFloat(row.ringba_api || 0);
+      const elocalStatic = parseFloat(row.elocal_static || 0);
+      const elocalApi = parseFloat(row.elocal_api || 0);
+      
+      const ringbaTotal = ringbaStatic + ringbaApi;
+      const elocalTotal = elocalStatic + elocalApi;
+      const adjustments = ringbaTotal - elocalTotal;
+      const adjustmentStatic = (ringbaStatic - elocalStatic) / 100;
+      const adjustmentApi = (ringbaApi - elocalApi) / 100;
+      const adjustmentPercentage = ringbaTotal !== 0 ? (adjustments / ringbaTotal) * 100 : 0;
+      
+      return {
+        ...row,
+        adjustments,
+        adjustmentStatic,
+        adjustmentApi,
+        adjustmentPercentage
+      };
+    });
+    
+    const chargebackSummary = chargebackRows.reduce((acc, row) => {
+      acc.totalRingbaStatic += parseFloat(row.ringba_static || 0);
+      acc.totalRingbaApi += parseFloat(row.ringba_api || 0);
+      acc.totalElocalStatic += parseFloat(row.elocal_static || 0);
+      acc.totalElocalApi += parseFloat(row.elocal_api || 0);
+      acc.totalAdjustments += row.adjustments;
+      acc.totalAdjustmentStatic += row.adjustmentStatic;
+      acc.totalAdjustmentApi += row.adjustmentApi;
+      return acc;
+    }, {
+      totalRingbaStatic: 0,
+      totalRingbaApi: 0,
+      totalElocalStatic: 0,
+      totalElocalApi: 0,
+      totalAdjustments: 0,
+      totalAdjustmentStatic: 0,
+      totalAdjustmentApi: 0
+    });
+    
+    chargebackSummary.totalRingba = chargebackSummary.totalRingbaStatic + chargebackSummary.totalRingbaApi;
+    chargebackSummary.totalElocal = chargebackSummary.totalElocalStatic + chargebackSummary.totalElocalApi;
+    chargebackSummary.adjustmentPercentage = chargebackSummary.totalRingba !== 0 
+      ? (chargebackSummary.totalAdjustments / chargebackSummary.totalRingba) * 100 
+      : 0;
+
+    const chargeback = {
+      rows: chargebackRows,
+      summary: chargebackSummary,
+      dateRange: {
+        startDate: startDateStr,
+        endDate: endDateStr
+      }
+    };
+
     return {
       health,
       stats,
       history,
       activity,
+      chargeback,
       timestamp: new Date().toISOString()
     };
   } catch (error) {
@@ -254,17 +344,35 @@ const routes = {
         LIMIT 10
       `).all();
 
-      // Get last run times
+      // Get last run times - separate STATIC and API (case-insensitive)
       const lastHistorical = db.prepare(`
         SELECT * FROM scraping_sessions 
-        WHERE session_id LIKE '%historical%' 
+        WHERE LOWER(session_id) LIKE '%historical%' 
+          AND (LOWER(session_id) LIKE '%static%' OR LOWER(session_id) NOT LIKE '%api%')
+        ORDER BY started_at DESC 
+        LIMIT 1
+      `).get();
+
+      const lastHistoricalAPI = db.prepare(`
+        SELECT * FROM scraping_sessions 
+        WHERE LOWER(session_id) LIKE '%historical%' 
+          AND LOWER(session_id) LIKE '%api%'
         ORDER BY started_at DESC 
         LIMIT 1
       `).get();
 
       const lastCurrent = db.prepare(`
         SELECT * FROM scraping_sessions 
-        WHERE session_id LIKE '%current%' 
+        WHERE LOWER(session_id) LIKE '%current%' 
+          AND (LOWER(session_id) LIKE '%static%' OR LOWER(session_id) NOT LIKE '%api%')
+        ORDER BY started_at DESC 
+        LIMIT 1
+      `).get();
+
+      const lastCurrentAPI = db.prepare(`
+        SELECT * FROM scraping_sessions 
+        WHERE LOWER(session_id) LIKE '%current%' 
+          AND LOWER(session_id) LIKE '%api%'
         ORDER BY started_at DESC 
         LIMIT 1
       `).get();
@@ -297,10 +405,20 @@ const routes = {
             status: lastHistorical?.status || 'unknown',
             lastStatus: lastHistorical?.status || 'unknown'
           },
+          historicalAPI: {
+            lastRun: lastHistoricalAPI?.started_at || null,
+            status: lastHistoricalAPI?.status || 'unknown',
+            lastStatus: lastHistoricalAPI?.status || 'unknown'
+          },
           current: {
             lastRun: lastCurrent?.started_at || null,
             status: lastCurrent?.status || 'unknown',
             lastStatus: lastCurrent?.status || 'unknown'
+          },
+          currentAPI: {
+            lastRun: lastCurrentAPI?.started_at || null,
+            status: lastCurrentAPI?.status || 'unknown',
+            lastStatus: lastCurrentAPI?.status || 'unknown'
           },
           ringba: {
             lastRun: lastRingbaSync?.sync_completed_at || lastRingbaSync?.sync_attempted_at || null,
@@ -327,25 +445,25 @@ const routes = {
 
     try {
       // Total calls
-      const totalCalls = db.prepare('SELECT COUNT(*) as count FROM campaign_calls').get();
+      const totalCalls = db.prepare('SELECT COUNT(*) as count FROM elocal_call_data').get();
       
       // Total adjustments
       const totalAdjustments = db.prepare('SELECT COUNT(*) as count FROM adjustment_details').get();
       
       // Total payout
-      const totalPayout = db.prepare('SELECT SUM(payout) as total FROM campaign_calls').get();
+      const totalPayout = db.prepare('SELECT SUM(payout) as total FROM elocal_call_data').get();
       
       // Calls today
       const callsToday = db.prepare(`
         SELECT COUNT(*) as count 
-        FROM campaign_calls 
+        FROM elocal_call_data 
         WHERE DATE(date_of_call) = DATE('now')
       `).get();
 
       // Calls this week
       const callsThisWeek = db.prepare(`
         SELECT COUNT(*) as count 
-        FROM campaign_calls 
+        FROM elocal_call_data 
         WHERE DATE(date_of_call) >= DATE('now', '-7 days')
       `).get();
 
@@ -376,18 +494,9 @@ const routes = {
       // Recent activity (last 24 hours)
       const recentActivity = db.prepare(`
         SELECT COUNT(*) as count 
-        FROM campaign_calls 
+        FROM elocal_call_data 
         WHERE created_at >= DATETIME('now', '-1 day')
       `).get();
-
-      // Top callers
-      const topCallers = db.prepare(`
-        SELECT caller_id, COUNT(*) as call_count, SUM(payout) as total_payout
-        FROM campaign_calls
-        GROUP BY caller_id
-        ORDER BY call_count DESC
-        LIMIT 10
-      `).all();
 
       sendJSON(res, {
         totalCalls: totalCalls.count || 0,
@@ -405,8 +514,7 @@ const routes = {
             ? ((finalRingbaStats.success / finalRingbaStats.total) * 100).toFixed(2)
             : 0,
           lastSyncTime: finalRingbaStats.last_sync_time || null
-        },
-        topCallers: topCallers
+        }
       });
     } catch (error) {
       sendError(res, error.message);
@@ -505,6 +613,106 @@ const routes = {
     }
   },
 
+  // Chargeback tracking endpoint
+  '/api/chargeback': (req, res) => {
+    const db = getDb();
+    if (!db) {
+      return sendError(res, 'Database connection failed', 503);
+    }
+
+    try {
+      const queryParams = url.parse(req.url, true).query;
+      const limit = parseInt(queryParams.limit) || 30; // Default to last 30 days
+      
+      // Calculate date range
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - limit);
+      
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      
+      // Fetch revenue summary data
+      const revenueData = db.prepare(`
+        SELECT * FROM revenue_summary
+        WHERE date >= date(?) AND date <= date(?)
+        ORDER BY date DESC
+      `).all(startDateStr, endDateStr);
+      
+      // Calculate adjustments for each row
+      const rows = revenueData.map(row => {
+        const ringbaStatic = parseFloat(row.ringba_static || 0);
+        const ringbaApi = parseFloat(row.ringba_api || 0);
+        const elocalStatic = parseFloat(row.elocal_static || 0);
+        const elocalApi = parseFloat(row.elocal_api || 0);
+        
+        const ringbaTotal = ringbaStatic + ringbaApi;
+        const elocalTotal = elocalStatic + elocalApi;
+        
+        // Adjustments = Ringba Total - Elocal Total
+        const adjustments = ringbaTotal - elocalTotal;
+        
+        // Adjustment (Static) = (Ringba Static - Elocal Static) / 100
+        const adjustmentStatic = (ringbaStatic - elocalStatic) / 100;
+        
+        // Adjustment (API) = (Ringba API - Elocal API) / 100
+        const adjustmentApi = (ringbaApi - elocalApi) / 100;
+        
+        // Adjustment % = (Adjustments / Ringba Total) * 100
+        const adjustmentPercentage = ringbaTotal !== 0 
+          ? (adjustments / ringbaTotal) * 100 
+          : 0;
+        
+        return {
+          ...row,
+          adjustments,
+          adjustmentStatic,
+          adjustmentApi,
+          adjustmentPercentage
+        };
+      });
+      
+      // Calculate summary totals
+      const summary = rows.reduce((acc, row) => {
+        acc.totalRingbaStatic += parseFloat(row.ringba_static || 0);
+        acc.totalRingbaApi += parseFloat(row.ringba_api || 0);
+        acc.totalElocalStatic += parseFloat(row.elocal_static || 0);
+        acc.totalElocalApi += parseFloat(row.elocal_api || 0);
+        acc.totalAdjustments += row.adjustments;
+        acc.totalAdjustmentStatic += row.adjustmentStatic;
+        acc.totalAdjustmentApi += row.adjustmentApi;
+        return acc;
+      }, {
+        totalRingbaStatic: 0,
+        totalRingbaApi: 0,
+        totalElocalStatic: 0,
+        totalElocalApi: 0,
+        totalAdjustments: 0,
+        totalAdjustmentStatic: 0,
+        totalAdjustmentApi: 0
+      });
+      
+      summary.totalRingba = summary.totalRingbaStatic + summary.totalRingbaApi;
+      summary.totalElocal = summary.totalElocalStatic + summary.totalElocalApi;
+      summary.adjustmentPercentage = summary.totalRingba !== 0 
+        ? (summary.totalAdjustments / summary.totalRingba) * 100 
+        : 0;
+      
+      sendJSON(res, {
+        rows,
+        summary,
+        dateRange: {
+          startDate: startDateStr,
+          endDate: endDateStr
+        }
+      });
+    } catch (error) {
+      sendError(res, error.message);
+    } finally {
+      db?.close();
+    }
+  },
+
   // Recent activity endpoint
   '/api/activity': (req, res) => {
     const db = getDb();
@@ -519,7 +727,7 @@ const routes = {
       // Get recent calls
       const recentCalls = db.prepare(`
         SELECT id, date_of_call, caller_id, payout, created_at
-        FROM campaign_calls
+        FROM elocal_call_data
         ORDER BY created_at DESC
         LIMIT ?
       `).all(limit);

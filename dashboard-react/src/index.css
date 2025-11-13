@@ -422,59 +422,207 @@ body {
     background-color: var(--bg-color);
 }
 
-/* Top Callers Section */
-.top-callers-table-container {
-    overflow-x: auto;
+/* Chargeback Tracker Section */
+.chargeback-section {
+    margin-bottom: 2rem;
 }
 
-.top-callers-table {
+.chargeback-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.summary-card {
+    background-color: var(--card-bg);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.summary-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.summary-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.summary-value.positive {
+    color: var(--success-color);
+}
+
+.summary-value.negative {
+    color: var(--error-color);
+}
+
+.chargeback-table-container {
+    overflow-x: auto;
+    background-color: var(--card-bg);
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.chargeback-table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 1200px;
 }
 
-.top-callers-table th {
+.chargeback-table th {
     background-color: var(--bg-color);
-    padding: 0.75rem;
-    text-align: left;
+    padding: 0.875rem;
+    text-align: right;
     font-weight: 600;
     font-size: 0.875rem;
     color: var(--text-secondary);
     border-bottom: 2px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 10;
 }
 
-.top-callers-table td {
-    padding: 0.75rem;
+.chargeback-table th:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background-color: var(--bg-color);
+    z-index: 11;
+}
+
+.chargeback-table td {
+    padding: 0.875rem;
     border-bottom: 1px solid var(--border-color);
     font-size: 0.875rem;
+    text-align: right;
+    white-space: nowrap;
 }
 
-.top-callers-table tr:hover {
+.chargeback-table td:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background-color: var(--card-bg);
+    z-index: 1;
+}
+
+.chargeback-table tbody tr:hover {
     background-color: var(--bg-color);
 }
 
-.rank-badge {
-    display: inline-block;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background-color: var(--primary-color);
-    color: white;
-    text-align: center;
-    line-height: 24px;
-    font-size: 0.75rem;
+.chargeback-table tbody tr:hover td:first-child {
+    background-color: var(--bg-color);
+}
+
+.chargeback-table .total-column {
     font-weight: 600;
+    background-color: rgba(37, 99, 235, 0.05);
 }
 
-.rank-badge.gold {
-    background-color: #f59e0b;
+.chargeback-table .positive {
+    color: var(--success-color);
+    font-weight: 500;
 }
 
-.rank-badge.silver {
-    background-color: #64748b;
+.chargeback-table .negative {
+    color: var(--error-color);
+    font-weight: 500;
 }
 
-.rank-badge.bronze {
-    background-color: #d97706;
+.chargeback-table tfoot {
+    background-color: var(--bg-color);
+    border-top: 2px solid var(--border-color);
+}
+
+.chargeback-table tfoot .summary-row {
+    font-weight: 700;
+}
+
+.chargeback-table tfoot .summary-row td {
+    padding: 1rem 0.875rem;
+    border-top: 2px solid var(--border-color);
+}
+
+.chargeback-table tfoot .summary-row td:first-child {
+    background-color: var(--bg-color);
+}
+
+/* Chargeback Charts */
+.chargeback-charts {
+    margin-top: 2rem;
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.chart-container {
+    background-color: var(--card-bg);
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.chart-container.chart-wide {
+    grid-column: 1 / -1;
+}
+
+.chart-container h3 {
+    margin: 0 0 1rem 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.chart-wrapper {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+.chart-container.chart-wide .chart-wrapper {
+    height: 350px;
+}
+
+/* Responsive charts */
+@media (max-width: 1200px) {
+    .charts-grid {
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .chart-container.chart-wide {
+        grid-column: 1;
+    }
+    
+    .chart-wrapper {
+        height: 250px;
+    }
+    
+    .chart-container.chart-wide .chart-wrapper {
+        height: 300px;
+    }
 }
 
 /* Footer */

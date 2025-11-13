@@ -25,21 +25,31 @@
     "dev": "node --watch src/index.js",
     "test": "node test.js",
     "test:unit": "node --test",
-    "setup": "node setup.js"
+    "setup": "node setup.js",
+    "test:postgres": "node test-postgres-connection.js",
+    "get-campaign-info": "node get-campaign-info.js",
+    "get-calls-by-target": "node get-calls-by-target.js",
+    "ringba-cost-sync": "node src/index.js ringba-cost-sync"
   },
-  "keywords": ["scraping", "automation", "functional-programming", "elocal"],
+  "keywords": [
+    "scraping",
+    "automation",
+    "functional-programming",
+    "elocal"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "puppeteer": "^24.15.0",
-    "sqlite3": "^5.1.6",
     "better-sqlite3": "^9.2.2",
+    "cheerio": "1.0.0-rc.12",
     "dotenv": "^16.3.1",
-    "ramda": "^0.29.1",
     "fp-ts": "^2.16.1",
     "io-ts": "^2.2.20",
     "node-cron": "^3.0.3",
-    "cheerio": "1.0.0-rc.12"
+    "pg": "^8.16.3",
+    "puppeteer": "^24.15.0",
+    "ramda": "^0.29.1",
+    "sqlite3": "^5.1.6"
   },
   "devDependencies": {
     "@types/node": "^20.10.0"

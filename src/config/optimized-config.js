@@ -39,6 +39,13 @@ export const createOptimizedConfig = () => ({
   ringbaSyncEnabled: process.env.RINGBA_SYNC_ENABLED === 'true',
   ringbaSyncCron: process.env.RINGBA_SYNC_CRON || '0 */1 * * *', // Every hour
   
+  // PostgreSQL Configuration for Revenue Sync
+  postgresHost: process.env.POSTGRES_HOST || 'localhost',
+  postgresPort: parseInt(process.env.POSTGRES_PORT) || 5434,
+  postgresUser: process.env.POSTGRES_USER || 'adi',
+  postgresPassword: process.env.POSTGRES_PASSWORD || 'nobodyislove',
+  postgresDatabase: process.env.POSTGRES_DATABASE || 'postgres',
+  
   // Performance optimizations for small datasets
   enableDataCompression: process.env.ENABLE_COMPRESSION === 'true',
   enableDataDeduplication: process.env.ENABLE_DEDUPLICATION !== 'false',
