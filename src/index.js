@@ -352,16 +352,17 @@ const main = async () => {
       const config = createConfig();
       console.log('[INFO] Starting multi-scheduler service...');
       console.log('[INFO] This will run:');
-      console.log('  - Historical data service (STATIC): Daily at 12:00 AM IST (midnight) - past 10 days');
-      console.log('  - Historical data service (API): Daily at 12:30 AM IST - past 10 days');
-      console.log('  - Current day service (STATIC): Every 3 hours from 9 PM to 6 AM IST (21:00, 00:00, 03:00, 06:00)');
-      console.log('  - Current day service (API): Every 3 hours from 9:30 PM to 6:30 AM IST (21:30, 00:30, 03:30, 06:30)');
-      console.log('  - Auth refresh: Once a week on Sunday at 2:00 AM IST');
+      console.log('  - Historical data service (STATIC): Daily at 12:00 AM IST');
+      console.log('  - Historical data service (API): Daily at 12:30 AM IST');
+      console.log('  - Current day service (STATIC): Every 3 hours at 21:00, 00:00, 03:00, 06:00 IST');
+      console.log('  - Current day service (API): Every 3 hours at 21:15, 00:15, 03:15, 06:15 IST');
+      console.log('  - Auth refresh: Sunday at 2:00 AM IST');
       if (config.ringbaAccountId && config.ringbaApiToken) {
-        console.log('  - Ringba cost sync: Daily at 7:00 AM IST');
+        console.log('  - Ringba cost sync: Every 3 hours at 21:45, 00:45, 03:45, 06:45 IST');
+        console.log('  - Revenue sync: Every 3 hours at 21:50, 00:50, 03:50, 06:50 IST');
       }
       if (config.ringbaSyncEnabled && config.ringbaAccountId && config.ringbaApiToken) {
-        console.log('  - Ringba sync: Daily at 8:00 AM IST (all categories)');
+        console.log('  - Ringba sync: Every 3 hours at 22:00, 01:00, 04:00, 07:00 IST');
       }
       
       const result = await TE.getOrElse(() => {

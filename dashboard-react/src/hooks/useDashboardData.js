@@ -77,8 +77,9 @@ export const useDashboardData = () => {
     }
   }, []);
 
-  const loadChargeback = useCallback(async (limit = 30) => {
+  const loadChargeback = useCallback(async (limit = null) => {
     try {
+      // If limit is null/undefined, fetch all data; otherwise use the limit
       const data = await api.chargeback(limit);
       setChargeback(data);
       return data;

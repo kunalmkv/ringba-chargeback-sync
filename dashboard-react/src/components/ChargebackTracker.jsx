@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatCurrency, formatNumber, formatDate } from '../utils/formatters';
 import ChargebackCharts from './ChargebackCharts';
+import { generateChargebackPDF } from '../utils/pdfGenerator';
 
 const ChargebackTracker = ({ chargebackData, loading }) => {
   if (loading) {
@@ -23,9 +24,27 @@ const ChargebackTracker = ({ chargebackData, loading }) => {
 
   const { rows, summary } = chargebackData;
 
+  const handleDownloadPDF = () => {
+    try {
+      generateChargebackPDF(chargebackData);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF: ' + error.message);
+    }
+  };
+
   return (
     <section className="section chargeback-section">
-      <h2>💰 Chargeback Tracking</h2>
+      <div className="chargeback-header">
+        <h2>💰 Chargeback Tracking</h2>
+        <button 
+          className="btn btn-download" 
+          onClick={handleDownloadPDF}
+          title="Download PDF Report"
+        >
+          📥 Download PDF
+        </button>
+      </div>
       
       {/* Summary Cards */}
       {summary && (
@@ -110,10 +129,10 @@ const ChargebackTracker = ({ chargebackData, loading }) => {
                     {formatCurrency(adjustments)}
                   </td>
                   <td className={adjustmentStatic < 0 ? 'negative' : adjustmentStatic > 0 ? 'positive' : ''}>
-                    {formatCurrency(adjustmentStatic)}
+                    {(adjustmentStatic * 100).toFixed(2)}%
                   </td>
                   <td className={adjustmentApi < 0 ? 'negative' : adjustmentApi > 0 ? 'positive' : ''}>
-                    {formatCurrency(adjustmentApi)}
+                    {(adjustmentApi * 100).toFixed(2)}%
                   </td>
                   <td className={adjustmentPercentage < 0 ? 'negative' : adjustmentPercentage > 0 ? 'positive' : ''}>
                     {adjustmentPercentage.toFixed(2)}%
@@ -135,10 +154,10 @@ const ChargebackTracker = ({ chargebackData, loading }) => {
                   <strong>{formatCurrency(summary.totalAdjustments)}</strong>
                 </td>
                 <td className={summary.totalAdjustmentStatic < 0 ? 'negative' : 'positive'}>
-                  <strong>{formatCurrency(summary.totalAdjustmentStatic)}</strong>
+                  <strong>{(summary.totalAdjustmentStatic * 100).toFixed(2)}%</strong>
                 </td>
                 <td className={summary.totalAdjustmentApi < 0 ? 'negative' : 'positive'}>
-                  <strong>{formatCurrency(summary.totalAdjustmentApi)}</strong>
+                  <strong>{(summary.totalAdjustmentApi * 100).toFixed(2)}%</strong>
                 </td>
                 <td className={summary.adjustmentPercentage < 0 ? 'negative' : 'positive'}>
                   <strong>{summary.adjustmentPercentage.toFixed(2)}%</strong>

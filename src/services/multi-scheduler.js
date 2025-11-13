@@ -177,9 +177,9 @@ export class MultiScheduler {
     return E.right(task);
   }
 
-  // Schedule current day service for API category (runs every 3 hours from 9:30 PM to 6:30 AM IST - 30 minutes after STATIC)
+  // Schedule current day service for API category (runs every 3 hours at 21:15, 00:15, 03:15, 06:15 IST)
   scheduleCurrentDayAPIService() {
-    const cronExpression = '30 21,0,3,6 * * *'; // Every 3 hours: 9:30 PM, 12:30 AM, 3:30 AM, 6:30 AM IST
+    const cronExpression = '15 21,0,3,6 * * *'; // Every 3 hours: 9:15 PM, 12:15 AM, 3:15 AM, 6:15 AM IST
     
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for current day API service: ${cronExpression}`));
@@ -208,7 +208,7 @@ export class MultiScheduler {
     this.logger.info('Current day API service scheduled', {
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Every 3 hours from 9:30 PM to 6:30 AM IST (21:30, 00:30, 03:30, 06:30)',
+      schedule: 'Every 3 hours at 21:15, 00:15, 03:15, 06:15 IST',
       description: 'Scrapes current day data for API category'
     });
 
@@ -255,9 +255,9 @@ export class MultiScheduler {
     return E.right(task);
   }
 
-  // Schedule revenue sync service (runs daily at 7:00 AM IST)
+  // Schedule revenue sync service (runs every 3 hours at 21:50, 00:50, 03:50, 06:50 IST)
   scheduleRevenueSync() {
-    const cronExpression = '0 7 * * *'; // Daily at 7:00 AM IST
+    const cronExpression = '50 21,0,3,6 * * *'; // Every 3 hours: 9:50 PM, 12:50 AM, 3:50 AM, 6:50 AM IST
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for revenue sync: ${cronExpression}`));
     }
@@ -284,19 +284,19 @@ export class MultiScheduler {
     this.logger.info('Revenue sync scheduled', { 
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Daily at 7:00 AM IST'
+      schedule: 'Every 3 hours at 21:50, 00:50, 03:50, 06:50 IST'
     });
     return E.right(task);
   }
 
-  // Schedule Ringba cost sync service (runs daily at 7:00 AM IST - 1 hour before ringba-sync)
+  // Schedule Ringba cost sync service (runs every 3 hours at 21:45, 00:45, 03:45, 06:45 IST)
   scheduleRingbaCostSync() {
     if (!this.config.ringbaAccountId || !this.config.ringbaApiToken) {
       this.logger.info('Ringba cost sync skipped: credentials missing');
       return E.right(null);
     }
 
-    const cronExpression = '0 7 * * *'; // Daily at 7:00 AM IST
+    const cronExpression = '45 21,0,3,6 * * *'; // Every 3 hours: 9:45 PM, 12:45 AM, 3:45 AM, 6:45 AM IST
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for Ringba cost sync: ${cronExpression}`));
     }
@@ -323,19 +323,19 @@ export class MultiScheduler {
     this.logger.info('Ringba cost sync scheduled', { 
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Daily at 7:00 AM IST'
+      schedule: 'Every 3 hours at 21:45, 00:45, 03:45, 06:45 IST'
     });
     return E.right(task);
   }
 
-  // Schedule Ringba sync service (runs daily at 8:00 AM IST)
+  // Schedule Ringba sync service (runs every 3 hours at 22:00, 01:00, 04:00, 07:00 IST)
   scheduleRingbaSync() {
     if (!this.config.ringbaSyncEnabled || !this.config.ringbaAccountId || !this.config.ringbaApiToken) {
       this.logger.info('Ringba sync skipped: not enabled or credentials missing');
       return E.right(null);
     }
 
-    const cronExpression = '0 8 * * *'; // Daily at 8:00 AM IST
+    const cronExpression = '0 22,1,4,7 * * *'; // Every 3 hours: 10:00 PM, 1:00 AM, 4:00 AM, 7:00 AM IST
     if (!cron.validate(cronExpression)) {
       return E.left(new Error(`Invalid cron expression for Ringba sync: ${cronExpression}`));
     }
@@ -362,7 +362,7 @@ export class MultiScheduler {
     this.logger.info('Ringba sync scheduled', { 
       cron: cronExpression,
       timezone: 'Asia/Kolkata (IST)',
-      schedule: 'Daily at 8:00 AM IST'
+      schedule: 'Every 3 hours at 22:00, 01:00, 04:00, 07:00 IST'
     });
     return E.right(task);
   }
@@ -701,18 +701,59 @@ export class MultiScheduler {
           next.setDate(next.getDate() + 1);
         }
         return next.toISOString();
-      } else if (cronExpression === '30 21,0,3,6 * * *') {
-        // Every 3 hours from 9:30 PM to 6:30 AM IST (21:30, 00:30, 03:30, 06:30)
+      } else if (cronExpression === '15 21,0,3,6 * * *') {
+        // Every 3 hours at 21:15, 00:15, 03:15, 06:15 IST
         const hours = [21, 0, 3, 6];
         const currentHour = now.getHours();
         const currentMinute = now.getMinutes();
         let nextHour = hours.find(h => h > currentHour) || hours[0];
         const next = new Date(now);
-        next.setHours(nextHour, 30, 0, 0);
+        next.setHours(nextHour, 15, 0, 0);
         if (next <= now) {
           // If we've passed all hours today, go to first hour tomorrow
           next.setDate(next.getDate() + 1);
-          next.setHours(hours[0], 30, 0, 0);
+          next.setHours(hours[0], 15, 0, 0);
+        }
+        return next.toISOString();
+      } else if (cronExpression === '45 21,0,3,6 * * *') {
+        // Every 3 hours at 21:45, 00:45, 03:45, 06:45 IST
+        const hours = [21, 0, 3, 6];
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        let nextHour = hours.find(h => h > currentHour) || hours[0];
+        const next = new Date(now);
+        next.setHours(nextHour, 45, 0, 0);
+        if (next <= now) {
+          // If we've passed all hours today, go to first hour tomorrow
+          next.setDate(next.getDate() + 1);
+          next.setHours(hours[0], 45, 0, 0);
+        }
+        return next.toISOString();
+      } else if (cronExpression === '50 21,0,3,6 * * *') {
+        // Every 3 hours at 21:50, 00:50, 03:50, 06:50 IST
+        const hours = [21, 0, 3, 6];
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        let nextHour = hours.find(h => h > currentHour) || hours[0];
+        const next = new Date(now);
+        next.setHours(nextHour, 50, 0, 0);
+        if (next <= now) {
+          // If we've passed all hours today, go to first hour tomorrow
+          next.setDate(next.getDate() + 1);
+          next.setHours(hours[0], 50, 0, 0);
+        }
+        return next.toISOString();
+      } else if (cronExpression === '0 22,1,4,7 * * *') {
+        // Every 3 hours at 22:00, 01:00, 04:00, 07:00 IST
+        const hours = [22, 1, 4, 7];
+        const currentHour = now.getHours();
+        let nextHour = hours.find(h => h > currentHour) || hours[0];
+        const next = new Date(now);
+        next.setHours(nextHour, 0, 0, 0);
+        if (next <= now) {
+          // If we've passed all hours today, go to first hour tomorrow
+          next.setDate(next.getDate() + 1);
+          next.setHours(hours[0], 0, 0, 0);
         }
         return next.toISOString();
       } else if (cronExpression === '0 2 * * 0') {
@@ -723,22 +764,6 @@ export class MultiScheduler {
         next.setHours(2, 0, 0, 0);
         if (next <= now) {
           next.setDate(next.getDate() + 7);
-        }
-        return next.toISOString();
-      } else if (cronExpression === '0 7 * * *') {
-        // Every day at 7:00 AM IST
-        const next = new Date(now);
-        next.setHours(7, 0, 0, 0);
-        if (next <= now) {
-          next.setDate(next.getDate() + 1);
-        }
-        return next.toISOString();
-      } else if (cronExpression === '0 8 * * *') {
-        // Every day at 8:00 AM IST
-        const next = new Date(now);
-        next.setHours(8, 0, 0, 0);
-        if (next <= now) {
-          next.setDate(next.getDate() + 1);
         }
         return next.toISOString();
       }

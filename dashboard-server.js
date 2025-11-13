@@ -242,18 +242,19 @@ const fetchAllDashboardData = () => {
       sessions: recentSessions
     };
 
-    // Chargeback data - fetch last 30 days
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
-    const startDateStr = startDate.toISOString().split('T')[0];
-    const endDateStr = endDate.toISOString().split('T')[0];
-    
+    // Chargeback data - fetch all data (no date limit)
     const revenueData = db.prepare(`
       SELECT * FROM revenue_summary
-      WHERE date >= date(?) AND date <= date(?)
       ORDER BY date DESC
-    `).all(startDateStr, endDateStr);
+    `).all();
+    
+    // Get date range from actual data
+    const startDateStr = revenueData.length > 0 
+      ? revenueData[revenueData.length - 1].date 
+      : new Date().toISOString().split('T')[0];
+    const endDateStr = revenueData.length > 0 
+      ? revenueData[0].date 
+      : new Date().toISOString().split('T')[0];
     
     const chargebackRows = revenueData.map(row => {
       const ringbaStatic = parseFloat(row.ringba_static || 0);
@@ -622,22 +623,43 @@ const routes = {
 
     try {
       const queryParams = url.parse(req.url, true).query;
-      const limit = parseInt(queryParams.limit) || 30; // Default to last 30 days
+      const limit = parseInt(queryParams.limit); // If limit is provided, use it; otherwise fetch all
       
-      // Calculate date range
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - limit);
+      let revenueData;
+      let startDateStr, endDateStr;
       
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
-      
-      // Fetch revenue summary data
-      const revenueData = db.prepare(`
-        SELECT * FROM revenue_summary
-        WHERE date >= date(?) AND date <= date(?)
-        ORDER BY date DESC
-      `).all(startDateStr, endDateStr);
+      if (limit && limit > 0) {
+        // Calculate date range based on limit
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - limit);
+        
+        startDateStr = startDate.toISOString().split('T')[0];
+        endDateStr = endDate.toISOString().split('T')[0];
+        
+        // Fetch revenue summary data for date range
+        revenueData = db.prepare(`
+          SELECT * FROM revenue_summary
+          WHERE date >= date(?) AND date <= date(?)
+          ORDER BY date DESC
+        `).all(startDateStr, endDateStr);
+      } else {
+        // Fetch all data if no limit specified
+        revenueData = db.prepare(`
+          SELECT * FROM revenue_summary
+          ORDER BY date DESC
+        `).all();
+        
+        // Get date range from actual data
+        if (revenueData.length > 0) {
+          startDateStr = revenueData[revenueData.length - 1].date;
+          endDateStr = revenueData[0].date;
+        } else {
+          const today = new Date().toISOString().split('T')[0];
+          startDateStr = today;
+          endDateStr = today;
+        }
+      }
       
       // Calculate adjustments for each row
       const rows = revenueData.map(row => {

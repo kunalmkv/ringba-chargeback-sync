@@ -47,6 +47,12 @@ export const api = {
     params.append('limit', limit.toString());
     return fetchAPI(`/api/ringba-logs?${params.toString()}`);
   },
-  chargeback: (limit = 30) => fetchAPI(`/api/chargeback?limit=${limit}`)
+  chargeback: (limit = null) => {
+    // If limit is null/undefined, fetch all data; otherwise use the limit
+    if (limit === null || limit === undefined) {
+      return fetchAPI('/api/chargeback');
+    }
+    return fetchAPI(`/api/chargeback?limit=${limit}`);
+  }
 };
 

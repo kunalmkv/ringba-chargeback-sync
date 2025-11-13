@@ -427,6 +427,43 @@ body {
     margin-bottom: 2rem;
 }
 
+.chargeback-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.chargeback-header h2 {
+    margin-bottom: 0;
+}
+
+.btn-download {
+    padding: 0.625rem 1.25rem;
+    background: linear-gradient(135deg, var(--primary-color) 0%, #1e40af 100%);
+    color: white;
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: var(--shadow);
+}
+
+.btn-download:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+    background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+}
+
+.btn-download:active {
+    transform: translateY(0);
+}
+
 .chargeback-summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
