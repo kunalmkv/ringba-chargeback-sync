@@ -75,75 +75,100 @@ const scrapeElocalDataWithDateRange = (config) => (dateRange) => (serviceType = 
         // Save to DB (upsert)
         console.log('[INFO] Saving data to database...');
         
-        // For API category: Look up payout from Ringba for each caller ID
-        // API category uses "call price" from eLocal, but we need to get actual payout from Ringba
-        if (category === 'API' && config.ringbaAccountId && config.ringbaApiToken) {
-          console.log('[INFO] API category: Looking up payout values from Ringba for all calls...');
+        // For API and STATIC categories: Look up payout from Ringba for each caller ID
+        // API category: Uses "call price" from eLocal, but we need to get actual payout from Ringba
+        // STATIC category: Verifies payout matches Ringba, updates if mismatch found
+        if ((category === 'API' || category === 'STATIC') && config.ringbaAccountId && config.ringbaApiToken) {
+          console.log(`[INFO] ${category} category: Looking up payout values from Ringba for all calls...`);
           const { findCallByCallerIdAndTime, getCallDetails } = await import('../http/ringba-client.js');
           
           let payoutLookups = 0;
           let payoutFound = 0;
           let payoutNotFound = 0;
+          let payoutMismatches = 0; // For STATIC category: tracks mismatches
           
           for (const call of processedCalls) {
             try {
               // Skip anonymous/invalid caller IDs
               const callerIdLower = (call.callerId || '').toLowerCase();
               if (callerIdLower.includes('anonymous') || callerIdLower === '' || !call.callerId) {
-                console.log(`[INFO] API category: Skipping anonymous/invalid caller ID: ${call.callerId}`);
+                console.log(`[INFO] ${category} category: Skipping anonymous/invalid caller ID: ${call.callerId}`);
                 continue;
               }
               
               payoutLookups++;
-              console.log(`[INFO] API category: Looking up call for ${call.callerId} at ${call.dateOfCall}...`);
+              const eLocalPayout = parseFloat(call.payout || 0);
+              console.log(`[INFO] ${category} category: Looking up call for ${call.callerId} at ${call.dateOfCall} (eLocal payout=$${eLocalPayout.toFixed(2)})...`);
               
               // Look up call in Ringba by caller ID and time
               const lookupEither = await findCallByCallerIdAndTime(config.ringbaAccountId, config.ringbaApiToken)(
                 call.callerId,
                 call.dateOfCall,
                 60, // 60 minute window
-                null // No expected payout for initial lookup
+                category === 'STATIC' ? eLocalPayout : null // For STATIC: pass expected payout for better matching
               )();
               
               if (lookupEither._tag === 'Right' && lookupEither.right) {
                 // Get call details to fetch payout
                 const inboundCallId = lookupEither.right.inboundCallId;
-                console.log(`[INFO] API category: Found call in Ringba: ${inboundCallId}`);
+                console.log(`[INFO] ${category} category: Found call in Ringba: ${inboundCallId}`);
                 
                 const detailsEither = await getCallDetails(config.ringbaAccountId, config.ringbaApiToken)(inboundCallId)();
                 
                 if (detailsEither._tag === 'Right' && detailsEither.right) {
                   const ringbaPayout = detailsEither.right.payout || 0;
-                  // Update payout from Ringba (overwrite the "call price" from eLocal)
-                  call.payout = ringbaPayout;
-                  payoutFound++;
+                  
+                  if (category === 'API') {
+                    // API category: Always update payout from Ringba (overwrite the "call price" from eLocal)
+                    call.payout = ringbaPayout;
+                    payoutFound++;
+                    console.log(`[INFO] API category: Updated payout for ${call.callerId}: $${ringbaPayout} (from Ringba)`);
+                  } else if (category === 'STATIC') {
+                    // STATIC category: Compare payouts and mark for sync if mismatch
+                    // If mismatch: Keep eLocal payout, mark for Ringba sync (Ringba will be updated to match eLocal)
+                    const payoutDiff = Math.abs(ringbaPayout - eLocalPayout);
+                    if (payoutDiff > 0.01) {
+                      // Payout mismatch detected - keep eLocal payout, will update Ringba later
+                      payoutMismatches++;
+                      console.log(`[INFO] STATIC category: Payout mismatch detected for ${call.callerId}: eLocal=$${eLocalPayout.toFixed(2)}, Ringba=$${ringbaPayout.toFixed(2)} (diff=$${payoutDiff.toFixed(2)}). Will sync to Ringba.`);
+                      // Keep eLocal payout (don't change it), Ringba sync service will update Ringba to match eLocal
+                      // The call will be saved with eLocal payout, and Ringba sync will update Ringba
+                    } else {
+                      // Payout matches - no update needed
+                      payoutFound++;
+                      console.log(`[INFO] STATIC category: Payout matches for ${call.callerId}: $${ringbaPayout.toFixed(2)}`);
+                    }
+                  }
                   
                   // Store Ringba inbound call ID for future reference
                   call.ringbaInboundCallId = inboundCallId;
-                  
-                  console.log(`[INFO] API category: Updated payout for ${call.callerId}: $${ringbaPayout} (from Ringba)`);
                 } else {
                   payoutNotFound++;
-                  console.warn(`[WARN] API category: Could not get call details for ${inboundCallId}`);
+                  console.warn(`[WARN] ${category} category: Could not get call details for ${inboundCallId}`);
                 }
               } else {
                 payoutNotFound++;
                 const error = lookupEither._tag === 'Left' ? lookupEither.left : null;
-                console.warn(`[WARN] API category: Call not found in Ringba for ${call.callerId}: ${error?.message || 'Not found'}`);
-                // Keep the original "call price" value from eLocal if Ringba lookup fails
+                console.warn(`[WARN] ${category} category: Call not found in Ringba for ${call.callerId}: ${error?.message || 'Not found'}`);
+                // Keep the original payout value from eLocal if Ringba lookup fails
               }
               
               // Small delay to avoid rate limiting
               await new Promise(resolve => setTimeout(resolve, 300));
             } catch (error) {
               payoutNotFound++;
-              console.warn(`[WARN] API category: Failed to lookup payout for ${call.callerId}: ${error.message}`);
-              // Continue with next call, keep original "call price" value
+              console.warn(`[WARN] ${category} category: Failed to lookup payout for ${call.callerId}: ${error.message}`);
+              // Continue with next call, keep original payout value
             }
           }
           
-          console.log(`[INFO] API category: Ringba lookup summary - Looked up: ${payoutLookups}, Found: ${payoutFound}, Not found: ${payoutNotFound}`);
-          console.log(`[INFO] API category: ${payoutFound} calls updated with Ringba payout, ${payoutNotFound} calls keeping eLocal "call price" value`);
+          if (category === 'API') {
+            console.log(`[INFO] API category: Ringba lookup summary - Looked up: ${payoutLookups}, Found: ${payoutFound}, Not found: ${payoutNotFound}`);
+            console.log(`[INFO] API category: ${payoutFound} calls updated with Ringba payout, ${payoutNotFound} calls keeping eLocal "call price" value`);
+          } else if (category === 'STATIC') {
+            console.log(`[INFO] STATIC category: Ringba lookup summary - Looked up: ${payoutLookups}, Found: ${payoutFound}, Mismatches: ${payoutMismatches}, Not found: ${payoutNotFound}`);
+            console.log(`[INFO] STATIC category: ${payoutFound} calls with matching payout, ${payoutMismatches} calls with payout mismatch (will be synced to Ringba)`);
+          }
         }
         
         // Save adjustment details to separate adjustment_details table (only for STATIC category)

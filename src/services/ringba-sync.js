@@ -32,7 +32,10 @@ const getPendingSyncRows = (config) => (category = null) =>
         LIMIT 100
       `;
     } else if (category === 'STATIC') {
-      // STATIC category: only rows with adjustment_amount
+      // STATIC category: rows with adjustment_amount OR all rows (for payout verification)
+      // This includes:
+      // 1. Rows with adjustments (chargebacks, refunds, modifications) - always sync
+      // 2. All rows without adjustments that haven't been synced yet (to check for payout mismatches with Ringba, similar to API category)
       query = `
         SELECT 
           id, date_of_call, campaign_phone, caller_id, payout,
@@ -40,17 +43,23 @@ const getPendingSyncRows = (config) => (category = null) =>
           ringba_inbound_call_id, ringba_sync_status
         FROM elocal_call_data
         WHERE category = 'STATIC'
-          AND adjustment_amount IS NOT NULL
-          AND (ringba_sync_status IS NULL 
-               OR ringba_sync_status = ''
-               OR ringba_sync_status = 'pending' 
-               OR ringba_sync_status = 'failed')
+          AND (
+            adjustment_amount IS NOT NULL
+            OR ringba_sync_status IS NULL
+            OR ringba_sync_status = ''
+            OR ringba_sync_status = 'pending'
+            OR ringba_sync_status = 'failed'
+          )
           AND (ringba_sync_status IS NULL OR ringba_sync_status != 'cannot_sync')
-        ORDER BY id ASC
+        ORDER BY 
+          CASE WHEN adjustment_amount IS NOT NULL THEN 0 ELSE 1 END,
+          id ASC
         LIMIT 100
       `;
     } else {
       // Default: both categories (backward compatibility)
+      // STATIC: rows with adjustments OR all rows (for payout verification)
+      // API: all rows (for payout verification)
       query = `
         SELECT 
           id, date_of_call, campaign_phone, caller_id, payout,
@@ -58,7 +67,13 @@ const getPendingSyncRows = (config) => (category = null) =>
           ringba_inbound_call_id, ringba_sync_status
         FROM elocal_call_data
         WHERE (
-          (category = 'STATIC' AND adjustment_amount IS NOT NULL)
+          (category = 'STATIC' AND (
+            adjustment_amount IS NOT NULL
+            OR ringba_sync_status IS NULL
+            OR ringba_sync_status = ''
+            OR ringba_sync_status = 'pending'
+            OR ringba_sync_status = 'failed'
+          ))
           OR (category = 'API')
         )
           AND (ringba_sync_status IS NULL 
@@ -66,7 +81,12 @@ const getPendingSyncRows = (config) => (category = null) =>
                OR ringba_sync_status = 'pending' 
                OR ringba_sync_status = 'failed')
           AND (ringba_sync_status IS NULL OR ringba_sync_status != 'cannot_sync')
-        ORDER BY id ASC
+        ORDER BY 
+          CASE 
+            WHEN category = 'STATIC' AND adjustment_amount IS NOT NULL THEN 0
+            ELSE 1
+          END,
+          id ASC
         LIMIT 100
       `;
     }
@@ -222,22 +242,22 @@ const syncRowToRingba = (config) => (row) =>
       console.log(`[Ringba] Current values: revenue=$${currentRevenue}, payout=$${currentPayout}, revenue leg connected=${isConnected}`);
       
       // Step 2b: Use payout value directly from database row
-      // For STATIC category: Use payout from row (may have been adjusted)
+      // For STATIC category: Use payout from row (may have been adjusted or verified during scraping)
       // For API category: Use payout from row (fetched from Ringba during scraping, but may have changed)
       const payoutValue = Math.max(0, Number(row.payout || 0));
       
-      // For API category: Compare with Ringba payout to see if update is needed
-      // API category: Always search in Ringba and update if payout doesn't match
-      if (row.category === 'API') {
+      // For API and STATIC categories: Compare with Ringba payout to see if update is needed
+      // If payout matches and there's no adjustment, skip the update
+      if ((row.category === 'API' || row.category === 'STATIC') && !row.adjustment_amount) {
         const currentRingbaPayout = Number(payoutLeg.payout || 0);
         const eLocalPayout = payoutValue;
         
-        console.log(`[Ringba] API category: Comparing payouts - Ringba=$${currentRingbaPayout.toFixed(2)}, eLocal=$${eLocalPayout.toFixed(2)}`);
+        console.log(`[Ringba] ${row.category} category: Comparing payouts - Ringba=$${currentRingbaPayout.toFixed(2)}, eLocal=$${eLocalPayout.toFixed(2)}`);
         
         // Only update if payout differs (with small tolerance for floating point)
         const payoutDiff = Math.abs(currentRingbaPayout - eLocalPayout);
         if (payoutDiff < 0.01) {
-          console.log(`[Ringba] API category: Payout matches (diff=$${payoutDiff.toFixed(2)}), no update needed`);
+          console.log(`[Ringba] ${row.category} category: Payout matches (diff=$${payoutDiff.toFixed(2)}), no update needed`);
           // Mark as synced without updating (payout already correct in Ringba)
           await TE.getOrElse(() => T.of(null))(updateSyncStatus(config)(row.id)('success', inboundCallId, { 
             message: 'Payout already matches, no update needed',
@@ -251,8 +271,8 @@ const syncRowToRingba = (config) => (row) =>
             campaignCallId: row.id,
             dateOfCall: row.date_of_call,
             callerId: row.caller_id,
-            adjustmentAmount: null,
-            adjustmentClassification: null,
+            adjustmentAmount: row.adjustment_amount,
+            adjustmentClassification: row.adjustment_classification,
             ringbaInboundCallId: inboundCallId,
             syncStatus: 'success',
             revenue: currentRevenue,
@@ -273,7 +293,10 @@ const syncRowToRingba = (config) => (row) =>
             skipped: 'payout_matches'
           };
         }
-        console.log(`[Ringba] API category: Payout differs by $${payoutDiff.toFixed(2)} (Ringba=$${currentRingbaPayout.toFixed(2)}, eLocal=$${eLocalPayout.toFixed(2)}), updating Ringba...`);
+        console.log(`[Ringba] ${row.category} category: Payout differs by $${payoutDiff.toFixed(2)} (Ringba=$${currentRingbaPayout.toFixed(2)}, eLocal=$${eLocalPayout.toFixed(2)}), updating Ringba...`);
+      } else if (row.category === 'STATIC' && row.adjustment_amount) {
+        // STATIC category with adjustment: Always update (adjustment takes priority)
+        console.log(`[Ringba] STATIC category: Adjustment detected (amount=$${row.adjustment_amount}), proceeding with update...`);
       }
       
       // Set both revenue and payout to the same value from database

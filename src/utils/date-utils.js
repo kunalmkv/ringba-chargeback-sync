@@ -40,21 +40,52 @@ export const getPastDaysRange = (days, excludeToday = true) => {
   };
 };
 
+// Get current IST time
+const getISTTime = () => {
+  const now = new Date();
+  // Convert to IST (UTC+5:30)
+  const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+  const utcTime = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
+  const istTime = new Date(utcTime + istOffset);
+  return istTime;
+};
+
 // Get current day date range
+// If service runs after 12:00 AM IST (midnight), use previous day (yesterday)
+// This ensures we get complete data for the whole day since the date changes at midnight IST
+// Logic:
+// - If IST hour is 0-11 (12:00 AM to 11:59 AM): Use previous day (yesterday)
+// - If IST hour is 12-23 (12:00 PM to 11:59 PM): Use current day (today)
 export const getCurrentDayRange = () => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const istTime = getISTTime();
+  const istHour = istTime.getHours();
+  const istDateStr = istTime.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata' });
   
-  const endDate = new Date(today);
-  endDate.setHours(23, 59, 59, 999); // End of today
+  // If it's after midnight (12:00 AM) and before noon (12:00 PM) in IST, use previous day
+  // This ensures we get complete data for the whole day since date changes at midnight IST
+  let targetDate = new Date();
+  
+  if (istHour >= 0 && istHour < 12) {
+    // It's between 12:00 AM and 11:59 AM IST, use previous day
+    targetDate.setDate(targetDate.getDate() - 1);
+    console.log(`[INFO] Current IST time: ${istDateStr} ${String(istHour).padStart(2, '0')}:${String(istTime.getMinutes()).padStart(2, '0')} - Using previous day (after midnight IST)`);
+  } else {
+    // It's 12:00 PM or later IST, use current day
+    console.log(`[INFO] Current IST time: ${istDateStr} ${String(istHour).padStart(2, '0')}:${String(istTime.getMinutes()).padStart(2, '0')} - Using current day`);
+  }
+  
+  targetDate.setHours(0, 0, 0, 0);
+  
+  const endDate = new Date(targetDate);
+  endDate.setHours(23, 59, 59, 999); // End of the target day
   
   return {
-    startDate: today,
+    startDate: targetDate,
     endDate: endDate,
-    startDateFormatted: formatDateForElocal(today),
-    endDateFormatted: formatDateForElocal(today), // Same date for single day
-    startDateURL: formatDateForURL(today),
-    endDateURL: formatDateForURL(today),
+    startDateFormatted: formatDateForElocal(targetDate),
+    endDateFormatted: formatDateForElocal(targetDate), // Same date for single day
+    startDateURL: formatDateForURL(targetDate),
+    endDateURL: formatDateForURL(targetDate),
     days: 1
   };
 };
