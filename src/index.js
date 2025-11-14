@@ -613,9 +613,9 @@ const main = async () => {
       const config = createConfig();
       const { syncRevenueForLastDays } = await import('./services/revenue-sync.js');
       
-      // Get days parameter from command line (default: 30)
+      // Get days parameter from command line (default: 10)
       const daysArg = process.argv.find(arg => arg.startsWith('--days='));
-      const days = daysArg ? parseInt(daysArg.split('=')[1]) : 30;
+      const days = daysArg ? parseInt(daysArg.split('=')[1]) : 10;
       
       const resultEither = await syncRevenueForLastDays(config)(days)();
       

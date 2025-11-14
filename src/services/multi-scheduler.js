@@ -487,7 +487,7 @@ export class MultiScheduler {
     try {
       this.logger.info(`Running revenue sync job: ${jobId}`);
       const { syncRevenueForLastDays } = await import('./revenue-sync.js');
-      const resultEither = await syncRevenueForLastDays(this.config)(30)(); // Last 30 days
+      const resultEither = await syncRevenueForLastDays(this.config)(10)(); // Last 10 days
       
       if (resultEither._tag === 'Right') {
         const result = resultEither.right;

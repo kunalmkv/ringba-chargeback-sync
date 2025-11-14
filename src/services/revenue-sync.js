@@ -288,7 +288,7 @@ export const syncRevenueSummary = (config) => (dateRange = null) =>
     async () => {
       console.log('[Revenue Sync] Starting revenue summary sync...');
       
-      // Determine date range (default: last 30 days)
+      // Determine date range (default: last 10 days)
       let startDate, endDate;
       if (dateRange) {
         startDate = dateRange.startDate;
@@ -296,7 +296,7 @@ export const syncRevenueSummary = (config) => (dateRange = null) =>
       } else {
         const end = new Date();
         const start = new Date();
-        start.setDate(start.getDate() - 30); // Last 30 days
+        start.setDate(start.getDate() - 10); // Last 10 days
         startDate = start.toISOString().split('T')[0];
         endDate = end.toISOString().split('T')[0];
       }
@@ -531,7 +531,7 @@ export const syncRevenueForToday = (config) =>
   });
 
 // Sync revenue for last N days
-export const syncRevenueForLastDays = (config) => (days = 30) => {
+export const syncRevenueForLastDays = (config) => (days = 10) => {
   const end = new Date();
   const start = new Date();
   start.setDate(start.getDate() - days);
