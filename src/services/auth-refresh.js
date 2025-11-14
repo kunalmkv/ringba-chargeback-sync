@@ -1,4 +1,4 @@
-// Service to refresh auth cookies every 3 days using a one-time Puppeteer login
+// Service to refresh auth cookies every 7 days using a one-time Puppeteer login
 import * as TE from 'fp-ts/lib/TaskEither.js';
 import { scrapingOps } from '../scrapers/elocal-scraper.js';
 import { writeSession, createSessionFromCookies } from '../auth/session-store.js';

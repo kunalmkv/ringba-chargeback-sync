@@ -325,19 +325,35 @@ export const syncRevenueSummary = (config) => (dateRange = null) =>
       
       // Get Ringba cost data from SQLite (ringba_cost_data table - already has categories determined)
       console.log('[Revenue Sync] Fetching Ringba cost data from SQLite (ringba_cost_data table)...');
-      const ringbaCostDataEither = await db.getRingbaCostData(startDate, endDate, null)();
-      const ringbaCostData = ringbaCostDataEither._tag === 'Right' 
-        ? ringbaCostDataEither.right 
-        : [];
-      console.log(`[Revenue Sync] Found ${ringbaCostData.length} Ringba cost records`);
+      let ringbaCostData = [];
+      try {
+        const ringbaCostDataEither = await db.getRingbaCostData(startDate, endDate, null)();
+        ringbaCostData = ringbaCostDataEither._tag === 'Right' 
+          ? ringbaCostDataEither.right 
+          : [];
+        console.log(`[Revenue Sync] Found ${ringbaCostData.length} Ringba cost records`);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+        console.error(`[Revenue Sync] ❌ Error fetching Ringba cost data:`, errorMsg);
+        console.error(`[Revenue Sync] Continuing with empty Ringba data...`);
+        ringbaCostData = [];
+      }
       
       // Get Elocal call data from SQLite
       console.log('[Revenue Sync] Fetching Elocal call data from SQLite...');
-      const elocalCallsEither = await getElocalCallData(config)(startDate, endDate)();
-      const elocalCalls = elocalCallsEither._tag === 'Right' 
-        ? elocalCallsEither.right 
-        : [];
-      console.log(`[Revenue Sync] Found ${elocalCalls.length} Elocal calls`);
+      let elocalCalls = [];
+      try {
+        const elocalCallsEither = await getElocalCallData(config)(startDate, endDate)();
+        elocalCalls = elocalCallsEither._tag === 'Right' 
+          ? elocalCallsEither.right 
+          : [];
+        console.log(`[Revenue Sync] Found ${elocalCalls.length} Elocal calls`);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+        console.error(`[Revenue Sync] ❌ Error fetching Elocal call data:`, errorMsg);
+        console.error(`[Revenue Sync] Continuing with empty Elocal data...`);
+        elocalCalls = [];
+      }
       
       // Helper function to parse date from ringba_cost_data format (MM/DD/YYYY HH:MM:SS AM/PM)
       const parseRingbaDate = (dateStr) => {
@@ -362,27 +378,38 @@ export const syncRevenueSummary = (config) => (dateRange = null) =>
       // Aggregate Ringba cost data by date and category
       console.log('[Revenue Sync] Aggregating Ringba cost data by date and category...');
       const ringbaDailyCost = new Map();
+      let ringbaRecordsSkipped = 0;
       for (const costRecord of ringbaCostData) {
-        const date = parseRingbaDate(costRecord.call_date);
-        if (!date) {
-          console.warn(`[Revenue Sync] Skipping record with invalid date: ${costRecord.call_date}`);
-          continue;
+        try {
+          const date = parseRingbaDate(costRecord.call_date);
+          if (!date) {
+            console.warn(`[Revenue Sync] Skipping record with invalid date: ${costRecord.call_date}`);
+            ringbaRecordsSkipped++;
+            continue;
+          }
+          
+          if (!ringbaDailyCost.has(date)) {
+            ringbaDailyCost.set(date, {
+              date,
+              ringbaStatic: 0,
+              ringbaApi: 0
+            });
+          }
+          
+          const dayData = ringbaDailyCost.get(date);
+          if (costRecord.category === 'STATIC') {
+            dayData.ringbaStatic += parseFloat(costRecord.cost || 0);
+          } else if (costRecord.category === 'API') {
+            dayData.ringbaApi += parseFloat(costRecord.cost || 0);
+          }
+        } catch (error) {
+          console.warn(`[Revenue Sync] Error processing Ringba cost record:`, error.message);
+          ringbaRecordsSkipped++;
+          // Continue with next record
         }
-        
-        if (!ringbaDailyCost.has(date)) {
-          ringbaDailyCost.set(date, {
-            date,
-            ringbaStatic: 0,
-            ringbaApi: 0
-          });
-        }
-        
-        const dayData = ringbaDailyCost.get(date);
-        if (costRecord.category === 'STATIC') {
-          dayData.ringbaStatic += parseFloat(costRecord.cost || 0);
-        } else if (costRecord.category === 'API') {
-          dayData.ringbaApi += parseFloat(costRecord.cost || 0);
-        }
+      }
+      if (ringbaRecordsSkipped > 0) {
+        console.warn(`[Revenue Sync] Skipped ${ringbaRecordsSkipped} invalid Ringba cost records`);
       }
       
       console.log(`[Revenue Sync] Aggregated Ringba cost data for ${ringbaDailyCost.size} days`);
@@ -390,25 +417,38 @@ export const syncRevenueSummary = (config) => (dateRange = null) =>
       // Aggregate Elocal data by date and category
       console.log('[Revenue Sync] Aggregating Elocal data by date and category...');
       const elocalDailyRevenue = new Map();
+      let elocalRecordsSkipped = 0;
       for (const elocalCall of elocalCalls) {
-        const date = elocalCall.date;
-        if (!date) continue;
-        
-        if (!elocalDailyRevenue.has(date)) {
-          elocalDailyRevenue.set(date, {
-            date,
-            elocalStatic: 0,
-            elocalApi: 0
-          });
+        try {
+          const date = elocalCall.date;
+          if (!date) {
+            elocalRecordsSkipped++;
+            continue;
+          }
+          
+          if (!elocalDailyRevenue.has(date)) {
+            elocalDailyRevenue.set(date, {
+              date,
+              elocalStatic: 0,
+              elocalApi: 0
+            });
+          }
+          
+          const dayData = elocalDailyRevenue.get(date);
+          const category = elocalCall.category || 'STATIC';
+          if (category === 'STATIC') {
+            dayData.elocalStatic += parseFloat(elocalCall.payout || 0);
+          } else if (category === 'API') {
+            dayData.elocalApi += parseFloat(elocalCall.payout || 0);
+          }
+        } catch (error) {
+          console.warn(`[Revenue Sync] Error processing Elocal call record:`, error.message);
+          elocalRecordsSkipped++;
+          // Continue with next record
         }
-        
-        const dayData = elocalDailyRevenue.get(date);
-        const category = elocalCall.category || 'STATIC';
-        if (category === 'STATIC') {
-          dayData.elocalStatic += parseFloat(elocalCall.payout || 0);
-        } else if (category === 'API') {
-          dayData.elocalApi += parseFloat(elocalCall.payout || 0);
-        }
+      }
+      if (elocalRecordsSkipped > 0) {
+        console.warn(`[Revenue Sync] Skipped ${elocalRecordsSkipped} invalid Elocal call records`);
       }
       
       console.log(`[Revenue Sync] Aggregated Elocal data for ${elocalDailyRevenue.size} days`);
@@ -438,6 +478,7 @@ export const syncRevenueSummary = (config) => (dateRange = null) =>
       // Update summary table in SQLite (local database)
       console.log('[Revenue Sync] Updating revenue summary table in SQLite...');
       let updated = 0;
+      let failed = 0;
       
       for (const dayData of dailyRevenue) {
         try {
@@ -450,16 +491,22 @@ export const syncRevenueSummary = (config) => (dateRange = null) =>
           
           if (resultEither._tag === 'Right') {
             updated++;
-            console.log(`[Revenue Sync] Updated summary for ${dayData.date}: Ringba Static=$${dayData.ringbaStatic.toFixed(2)}, API=$${dayData.ringbaApi.toFixed(2)}, Elocal Static=$${dayData.elocalStatic.toFixed(2)}, API=$${dayData.elocalApi.toFixed(2)}`);
+            console.log(`[Revenue Sync] ✅ Updated summary for ${dayData.date}: Ringba Static=$${dayData.ringbaStatic.toFixed(2)}, API=$${dayData.ringbaApi.toFixed(2)}, Elocal Static=$${dayData.elocalStatic.toFixed(2)}, API=$${dayData.elocalApi.toFixed(2)}`);
           } else {
-            console.error(`[Revenue Sync] Failed to update summary for ${dayData.date}:`, resultEither.left.message);
+            const errorMsg = resultEither.left instanceof Error ? resultEither.left.message : (typeof resultEither.left === 'string' ? resultEither.left : JSON.stringify(resultEither.left));
+            console.error(`[Revenue Sync] ❌ Failed to update summary for ${dayData.date}:`, errorMsg);
+            failed++;
+            // Continue processing other days
           }
         } catch (error) {
-          console.error(`[Revenue Sync] Failed to update summary for ${dayData.date}:`, error.message);
+          const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+          console.error(`[Revenue Sync] ❌ Exception updating summary for ${dayData.date}:`, errorMsg);
+          failed++;
+          // Continue processing other days
         }
       }
       
-      console.log(`[Revenue Sync] ✅ Sync completed: ${updated} days updated in SQLite`);
+      console.log(`[Revenue Sync] ✅ Sync completed: ${updated} days updated, ${failed} days failed in SQLite`);
       
       return {
         success: true,

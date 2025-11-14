@@ -520,15 +520,15 @@ export class MultiScheduler {
 
     try {
       this.logger.info(`Running Ringba cost sync job: ${jobId}`);
-      const { syncRingbaCostForLastDays } = await import('./ringba-cost-sync.js');
+      const { syncRingbaCostDataForToday } = await import('./ringba-cost-sync.js');
       
-      // Sync last 30 days (will skip dates that already have data)
-      const resultEither = await syncRingbaCostForLastDays(this.config)(30)();
+      // Sync current day only (will skip calls that already exist)
+      const resultEither = await syncRingbaCostDataForToday(this.config)();
       
       if (resultEither._tag === 'Right') {
         const result = resultEither.right;
         stats.successfulRuns++;
-        this.logger.info(`Ringba cost sync job ${jobId} completed successfully: ${result.summary.totalCalls} calls processed, ${result.summary.saved.inserted} inserted, ${result.summary.saved.updated} updated`);
+        this.logger.info(`Ringba cost sync job ${jobId} completed successfully: ${result.summary.totalCalls} new calls processed, ${result.summary.saved.inserted} inserted, ${result.summary.skippedCalls || 0} existing calls skipped`);
       } else {
         stats.failedRuns++;
         const error = resultEither.left;

@@ -384,6 +384,24 @@ const routes = {
         ORDER BY sync_completed_at DESC, id DESC 
         LIMIT 1
       `).get();
+      
+      // Get recent failed syncs for debugging
+      const recentFailedSyncs = db.prepare(`
+        SELECT id, sync_status, sync_attempted_at, error_message, caller_id, date_of_call
+        FROM ringba_sync_logs 
+        WHERE sync_status = 'failed'
+        ORDER BY sync_attempted_at DESC 
+        LIMIT 5
+      `).all();
+      
+      // Get recent failed scraping sessions
+      const recentFailedSessions = db.prepare(`
+        SELECT id, session_id, status, error_message, started_at
+        FROM scraping_sessions 
+        WHERE status = 'failed'
+        ORDER BY started_at DESC 
+        LIMIT 5
+      `).all();
 
       // Calculate success rates
       const totalSessions = db.prepare(`
@@ -404,31 +422,40 @@ const routes = {
           historical: {
             lastRun: lastHistorical?.started_at || null,
             status: lastHistorical?.status || 'unknown',
-            lastStatus: lastHistorical?.status || 'unknown'
+            lastStatus: lastHistorical?.status || 'unknown',
+            errorMessage: lastHistorical?.error_message || null
           },
           historicalAPI: {
             lastRun: lastHistoricalAPI?.started_at || null,
             status: lastHistoricalAPI?.status || 'unknown',
-            lastStatus: lastHistoricalAPI?.status || 'unknown'
+            lastStatus: lastHistoricalAPI?.status || 'unknown',
+            errorMessage: lastHistoricalAPI?.error_message || null
           },
           current: {
             lastRun: lastCurrent?.started_at || null,
             status: lastCurrent?.status || 'unknown',
-            lastStatus: lastCurrent?.status || 'unknown'
+            lastStatus: lastCurrent?.status || 'unknown',
+            errorMessage: lastCurrent?.error_message || null
           },
           currentAPI: {
             lastRun: lastCurrentAPI?.started_at || null,
             status: lastCurrentAPI?.status || 'unknown',
-            lastStatus: lastCurrentAPI?.status || 'unknown'
+            lastStatus: lastCurrentAPI?.status || 'unknown',
+            errorMessage: lastCurrentAPI?.error_message || null
           },
           ringba: {
             lastRun: lastRingbaSync?.sync_completed_at || lastRingbaSync?.sync_attempted_at || null,
             status: lastRingbaSync?.sync_status || 'unknown',
-            lastStatus: lastRingbaSync?.sync_status || 'unknown'
+            lastStatus: lastRingbaSync?.sync_status || 'unknown',
+            errorMessage: lastRingbaSync?.error_message || null
           }
         },
         successRate: parseFloat(successRate),
-        recentSessions: recentSessions
+        recentSessions: recentSessions,
+        debug: {
+          recentFailedSyncs: recentFailedSyncs,
+          recentFailedSessions: recentFailedSessions
+        }
       });
     } catch (error) {
       sendError(res, error.message);

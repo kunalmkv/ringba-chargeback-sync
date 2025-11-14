@@ -16,7 +16,9 @@ const HealthStatus = ({ health }) => {
   const ServiceCard = ({ icon, title, serviceData }) => {
     const status = serviceData?.status || serviceData?.lastStatus || 'unknown';
     const lastRun = serviceData?.lastRun || null;
+    const errorMessage = serviceData?.errorMessage || null;
     const statusClass = getStatusClass(status);
+    const [showError, setShowError] = React.useState(false);
 
     return (
       <div className="health-card">
@@ -29,6 +31,22 @@ const HealthStatus = ({ health }) => {
           <p className="health-time">
             {lastRun ? formatRelativeTime(new Date(lastRun)) : 'Never'}
           </p>
+          {errorMessage && status === 'failed' && (
+            <div className="error-details">
+              <button 
+                className="error-toggle"
+                onClick={() => setShowError(!showError)}
+                title="Click to view error details"
+              >
+                {showError ? '▼' : '▶'} Error Details
+              </button>
+              {showError && (
+                <div className="error-message">
+                  <pre>{errorMessage}</pre>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );

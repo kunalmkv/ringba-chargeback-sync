@@ -740,29 +740,40 @@ export const dbOps = (config) => ({
     return { id: result.lastInsertRowid, ...costData };
   }),
   
-  batchUpsertRingbaCostData: (costDataArray) => withDatabase(config)(async (db) => {
+  batchUpsertRingbaCostData: (costDataArray, skipUpdates = false) => withDatabase(config)(async (db) => {
     if (R.isEmpty(costDataArray)) return { inserted: 0, updated: 0 };
     
-    const stmt = db.prepare(`
-      INSERT INTO ringba_cost_data (
-        inbound_call_id, target_id, target_name, category,
-        call_date, caller_id, revenue, cost,
-        campaign_name, publisher_name, inbound_phone_number,
-        updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(inbound_call_id, category) 
-      DO UPDATE SET
-        target_id = excluded.target_id,
-        target_name = excluded.target_name,
-        call_date = excluded.call_date,
-        caller_id = excluded.caller_id,
-        revenue = excluded.revenue,
-        cost = excluded.cost,
-        campaign_name = excluded.campaign_name,
-        publisher_name = excluded.publisher_name,
-        inbound_phone_number = excluded.inbound_phone_number,
-        updated_at = CURRENT_TIMESTAMP
-    `);
+    // If skipUpdates is true, use INSERT OR IGNORE (won't update existing records)
+    // Otherwise, use ON CONFLICT DO UPDATE (will update existing records)
+    const stmt = skipUpdates 
+      ? db.prepare(`
+          INSERT OR IGNORE INTO ringba_cost_data (
+            inbound_call_id, target_id, target_name, category,
+            call_date, caller_id, revenue, cost,
+            campaign_name, publisher_name, inbound_phone_number,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `)
+      : db.prepare(`
+          INSERT INTO ringba_cost_data (
+            inbound_call_id, target_id, target_name, category,
+            call_date, caller_id, revenue, cost,
+            campaign_name, publisher_name, inbound_phone_number,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(inbound_call_id, category) 
+          DO UPDATE SET
+            target_id = excluded.target_id,
+            target_name = excluded.target_name,
+            call_date = excluded.call_date,
+            caller_id = excluded.caller_id,
+            revenue = excluded.revenue,
+            cost = excluded.cost,
+            campaign_name = excluded.campaign_name,
+            publisher_name = excluded.publisher_name,
+            inbound_phone_number = excluded.inbound_phone_number,
+            updated_at = CURRENT_TIMESTAMP
+        `);
     
     const insertMany = db.transaction((dataArray) => {
       let inserted = 0;
@@ -770,15 +781,51 @@ export const dbOps = (config) => ({
       
       for (const costData of dataArray) {
         try {
-          // Check if record exists
-          const existing = db.prepare(`
-            SELECT id FROM ringba_cost_data 
-            WHERE inbound_call_id = ? AND category = ?
-            LIMIT 1
-          `).get(costData.inboundCallId, costData.category);
+          if (skipUpdates) {
+            // For INSERT OR IGNORE, check if record exists before inserting
+            const existing = db.prepare(`
+              SELECT id FROM ringba_cost_data 
+              WHERE inbound_call_id = ? AND category = ?
+              LIMIT 1
+            `).get(costData.inboundCallId, costData.category);
+            
+            if (existing) {
+              // Skip - record already exists
+              continue;
+            }
+          } else {
+            // For ON CONFLICT DO UPDATE, check if record exists to track updates
+            const existing = db.prepare(`
+              SELECT id FROM ringba_cost_data 
+              WHERE inbound_call_id = ? AND category = ?
+              LIMIT 1
+            `).get(costData.inboundCallId, costData.category);
+            
+            const wasExisting = existing !== undefined;
+            
+            stmt.run(
+              costData.inboundCallId,
+              costData.targetId,
+              costData.targetName || null,
+              costData.category,
+              costData.callDate,
+              costData.callerId || null,
+              costData.revenue || 0,
+              costData.cost || 0,
+              costData.campaignName || null,
+              costData.publisherName || null,
+              costData.inboundPhoneNumber || null
+            );
+            
+            if (wasExisting) {
+              updated++;
+            } else {
+              inserted++;
+            }
+            continue;
+          }
           
-          const wasExisting = existing !== undefined;
-          
+          // For skipUpdates mode, insert new record
           stmt.run(
             costData.inboundCallId,
             costData.targetId,
@@ -792,12 +839,7 @@ export const dbOps = (config) => ({
             costData.publisherName || null,
             costData.inboundPhoneNumber || null
           );
-          
-          if (wasExisting) {
-            updated++;
-          } else {
-            inserted++;
-          }
+          inserted++;
         } catch (error) {
           console.warn(`Error processing ringba cost data: ${error.message}`);
         }

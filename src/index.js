@@ -508,60 +508,106 @@ const main = async () => {
       }
       process.exit(0);
     } else if (command === 'ringba-cost-sync' || command === 'sync-ringba-cost') {
-  console.log('[INFO] Starting Ringba cost sync service...');
-  const config = createConfig();
-  const { syncRingbaCostForDateRange } = await import('./services/ringba-cost-sync.js');
-  
-  // Parse date range from arguments or use defaults
-  const startDateArg = process.argv.find(arg => arg.startsWith('--start='));
-  const endDateArg = process.argv.find(arg => arg.startsWith('--end='));
-  
-  let startDate, endDate;
-  if (startDateArg && endDateArg) {
-    startDate = startDateArg.split('=')[1];
-    endDate = endDateArg.split('=')[1];
-  } else {
-    // Default to last 30 days
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 30);
-    startDate = start.toISOString().split('T')[0];
-    endDate = end.toISOString().split('T')[0];
-  }
-  
-  console.log(`[INFO] Date range: ${startDate} to ${endDate}`);
-  
-  const resultEither = await syncRingbaCostForDateRange(config)(startDate, endDate)();
-  
-  if (resultEither._tag === 'Right') {
-    const result = resultEither.right;
-    console.log('\n========================================');
-    console.log('✅ Ringba Cost Sync Completed');
-    console.log('========================================');
-    console.log(`Total Calls: ${result.summary.totalCalls}`);
-    console.log(`Total Cost: $${result.summary.totalCost.toFixed(2)}`);
-    console.log(`Total Revenue: $${result.summary.totalRevenue.toFixed(2)}`);
-    console.log('');
-    console.log('By Category:');
-    console.log(`  STATIC: ${result.summary.byCategory.STATIC.calls} calls, Cost: $${result.summary.byCategory.STATIC.cost.toFixed(2)}, Revenue: $${result.summary.byCategory.STATIC.revenue.toFixed(2)}`);
-    console.log(`  API: ${result.summary.byCategory.API.calls} calls, Cost: $${result.summary.byCategory.API.cost.toFixed(2)}, Revenue: $${result.summary.byCategory.API.revenue.toFixed(2)}`);
-    console.log('');
-    console.log('By Target:');
-    for (const [targetId, data] of Object.entries(result.summary.byTarget)) {
-      console.log(`  ${data.targetName} (${data.category}): ${data.calls} calls, Cost: $${data.cost.toFixed(2)}, Revenue: $${data.revenue.toFixed(2)}`);
-    }
-    console.log('');
-    console.log('Database:');
-    console.log(`  Inserted: ${result.summary.saved.inserted}`);
-    console.log(`  Updated: ${result.summary.saved.updated}`);
-    console.log(`  Total: ${result.summary.saved.total}`);
-    console.log('========================================\n');
-    process.exit(0);
-  } else {
-    console.error('❌ Error:', resultEither.left.message);
-    process.exit(1);
-  }
-} else if (command === 'revenue-sync' || command === 'sync-revenue') {
+      console.log('[INFO] Starting Ringba cost sync service...');
+      const config = createConfig();
+      
+      // Check if --today flag is provided (for current day only, skips existing calls)
+      const todayOnly = process.argv.includes('--today');
+      
+      if (todayOnly) {
+        // Use the new "today only" function (skips existing calls, doesn't update)
+        const { syncRingbaCostDataForToday } = await import('./services/ringba-cost-sync.js');
+        console.log('[INFO] Mode: Current day only (will skip existing calls, no updates)');
+        
+        const resultEither = await syncRingbaCostDataForToday(config)();
+        
+        if (resultEither._tag === 'Right') {
+          const result = resultEither.right;
+          console.log('\n========================================');
+          console.log('✅ Ringba Cost Sync Completed (Today Only)');
+          console.log('========================================');
+          console.log(`New Calls Processed: ${result.summary.totalCalls}`);
+          console.log(`Existing Calls Skipped: ${result.summary.skippedCalls || 0}`);
+          console.log(`Total Cost: $${result.summary.totalCost.toFixed(2)}`);
+          console.log(`Total Revenue: $${result.summary.totalRevenue.toFixed(2)}`);
+          console.log('');
+          console.log('By Category:');
+          console.log(`  STATIC: ${result.summary.byCategory.STATIC.calls} calls, Cost: $${result.summary.byCategory.STATIC.cost.toFixed(2)}, Revenue: $${result.summary.byCategory.STATIC.revenue.toFixed(2)}`);
+          console.log(`  API: ${result.summary.byCategory.API.calls} calls, Cost: $${result.summary.byCategory.API.cost.toFixed(2)}, Revenue: $${result.summary.byCategory.API.revenue.toFixed(2)}`);
+          console.log('');
+          console.log('By Target:');
+          for (const [targetId, data] of Object.entries(result.summary.byTarget)) {
+            console.log(`  ${data.targetName} (${data.category}): ${data.calls} calls, Cost: $${data.cost.toFixed(2)}, Revenue: $${data.revenue.toFixed(2)}`);
+          }
+          console.log('');
+          console.log('Database:');
+          console.log(`  Inserted: ${result.summary.saved.inserted}`);
+          console.log(`  Updated: ${result.summary.saved.updated} (should be 0 - no updates)`);
+          console.log(`  Total: ${result.summary.saved.total}`);
+          console.log(`  Targets Processed: ${result.summary.targetsProcessed}`);
+          console.log(`  Targets Failed: ${result.summary.targetsFailed}`);
+          console.log('========================================\n');
+          process.exit(0);
+        } else {
+          console.error('❌ Error:', resultEither.left.message);
+          process.exit(1);
+        }
+      } else {
+        // Use date range function (for manual/backfill operations)
+        const { syncRingbaCostForDateRange } = await import('./services/ringba-cost-sync.js');
+        
+        // Parse date range from arguments or use defaults
+        const startDateArg = process.argv.find(arg => arg.startsWith('--start='));
+        const endDateArg = process.argv.find(arg => arg.startsWith('--end='));
+        
+        let startDate, endDate;
+        if (startDateArg && endDateArg) {
+          startDate = startDateArg.split('=')[1];
+          endDate = endDateArg.split('=')[1];
+        } else {
+          // Default to last 30 days
+          const end = new Date();
+          const start = new Date();
+          start.setDate(start.getDate() - 30);
+          startDate = start.toISOString().split('T')[0];
+          endDate = end.toISOString().split('T')[0];
+        }
+        
+        console.log(`[INFO] Date range: ${startDate} to ${endDate}`);
+        console.log('[INFO] Mode: Date range (will update existing records)');
+        
+        const resultEither = await syncRingbaCostForDateRange(config)(startDate, endDate)();
+        
+        if (resultEither._tag === 'Right') {
+          const result = resultEither.right;
+          console.log('\n========================================');
+          console.log('✅ Ringba Cost Sync Completed');
+          console.log('========================================');
+          console.log(`Total Calls: ${result.summary.totalCalls}`);
+          console.log(`Total Cost: $${result.summary.totalCost.toFixed(2)}`);
+          console.log(`Total Revenue: $${result.summary.totalRevenue.toFixed(2)}`);
+          console.log('');
+          console.log('By Category:');
+          console.log(`  STATIC: ${result.summary.byCategory.STATIC.calls} calls, Cost: $${result.summary.byCategory.STATIC.cost.toFixed(2)}, Revenue: $${result.summary.byCategory.STATIC.revenue.toFixed(2)}`);
+          console.log(`  API: ${result.summary.byCategory.API.calls} calls, Cost: $${result.summary.byCategory.API.cost.toFixed(2)}, Revenue: $${result.summary.byCategory.API.revenue.toFixed(2)}`);
+          console.log('');
+          console.log('By Target:');
+          for (const [targetId, data] of Object.entries(result.summary.byTarget)) {
+            console.log(`  ${data.targetName} (${data.category}): ${data.calls} calls, Cost: $${data.cost.toFixed(2)}, Revenue: $${data.revenue.toFixed(2)}`);
+          }
+          console.log('');
+          console.log('Database:');
+          console.log(`  Inserted: ${result.summary.saved.inserted}`);
+          console.log(`  Updated: ${result.summary.saved.updated}`);
+          console.log(`  Total: ${result.summary.saved.total}`);
+          console.log('========================================\n');
+          process.exit(0);
+        } else {
+          console.error('❌ Error:', resultEither.left.message);
+          process.exit(1);
+        }
+      }
+    } else if (command === 'revenue-sync' || command === 'sync-revenue') {
       console.log('[INFO] Starting revenue sync service...');
       
       const config = createConfig();
