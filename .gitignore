@@ -69,6 +69,8 @@ jspm_packages/
 # FuseBox cache
 .fusebox/
 
+*.db
+
 # DynamoDB Local files
 .dynamodb/
 
