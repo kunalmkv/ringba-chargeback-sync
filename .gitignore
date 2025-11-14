@@ -107,3 +107,6 @@ videos/
 tmp/
 temp/
 
+
+
+data/elocal_scraper.db
