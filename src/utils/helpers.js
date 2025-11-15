@@ -77,7 +77,16 @@ export const filterValidAdjustments = R.filter(
 );
 
 // Data deduplication utilities
-export const deduplicateCalls = R.uniqBy(R.prop('callerId'));
+// Deduplicate based on composite key: callerId + dateOfCall + campaignPhone + category
+// This matches the database UNIQUE constraint and ensures multiple calls from the same caller on the same day are preserved
+export const deduplicateCalls = R.uniqBy(call => {
+  const dateOfCall = call.dateOfCall || '';
+  const callerId = call.callerId || '';
+  const campaignPhone = call.campaignPhone || '';
+  const category = call.category || '';
+  // Create composite key matching database UNIQUE constraint
+  return `${callerId}|${dateOfCall}|${campaignPhone}|${category}`;
+});
 export const deduplicateAdjustments = R.uniqBy(R.prop('callSid'));
 
 // Data processing pipeline (only required fields: dateOfCall, campaignPhone, callerId, payout)

@@ -52,6 +52,8 @@ export const fetchAllCampaignResultsPages = async (config, dateRange, campaignId
   let currentPage = 1;
   let totalPages = null;
   let hasMorePages = true;
+  let consecutiveEmptyPages = 0;
+  const MAX_CONSECUTIVE_EMPTY_PAGES = 3;
 
   console.log(`[INFO] Starting paginated data fetch for campaign ${campaignId}${includeAdjustments ? ' (with adjustments)' : ' (no adjustments)'}...`);
 
@@ -80,11 +82,25 @@ export const fetchAllCampaignResultsPages = async (config, dateRange, campaignId
       const pageCalls = extractCampaignCallsFromHtml(fetched.html);
       const pageAdjustments = includeAdjustments ? extractAdjustmentDetailsFromHtml(fetched.html) : [];
       
+      // A page is considered "empty" if it has no calls
+      // For STATIC category, we still collect adjustments, but we stop pagination based on calls
+      // For API category, we only care about calls
+      const isPageEmptyForCalls = pageCalls.length === 0;
+      
       console.log(`[INFO] Page ${currentPage}: Found ${pageCalls.length} calls${includeAdjustments ? `, ${pageAdjustments.length} adjustments` : ' (adjustments skipped)'}`);
       
-      allCalls.push(...pageCalls);
-      if (includeAdjustments) {
-        allAdjustments.push(...pageAdjustments);
+      // Track consecutive empty pages (based on calls only)
+      // Stop pagination if we hit 3 consecutive pages with no calls
+      if (isPageEmptyForCalls) {
+        consecutiveEmptyPages++;
+        console.log(`[INFO] Page ${currentPage} has no calls (${consecutiveEmptyPages} consecutive page${consecutiveEmptyPages !== 1 ? 's' : ''} without calls)`);
+      } else {
+        // Reset counter if page has calls
+        consecutiveEmptyPages = 0;
+        allCalls.push(...pageCalls);
+        if (includeAdjustments) {
+          allAdjustments.push(...pageAdjustments);
+        }
       }
 
       // Check if we should continue
@@ -92,13 +108,18 @@ export const fetchAllCampaignResultsPages = async (config, dateRange, campaignId
         // We know the total number of pages
         if (currentPage >= totalPages) {
           hasMorePages = false;
+        } else if (consecutiveEmptyPages >= MAX_CONSECUTIVE_EMPTY_PAGES) {
+          // Stop if we hit 3 consecutive empty pages (even if totalPages suggests more)
+          console.log(`[INFO] Stopping pagination: Found ${consecutiveEmptyPages} consecutive empty pages`);
+          hasMorePages = false;
         } else {
           currentPage++;
         }
       } else {
-        // We don't know total pages - check if current page has data
-        if (pageCalls.length === 0 && pageAdjustments.length === 0) {
-          // No data on this page, assume we've reached the end
+        // We don't know total pages - check consecutive empty pages
+        if (consecutiveEmptyPages >= MAX_CONSECUTIVE_EMPTY_PAGES) {
+          // Stop after 3 consecutive empty pages
+          console.log(`[INFO] Stopping pagination: Found ${consecutiveEmptyPages} consecutive empty pages`);
           hasMorePages = false;
         } else {
           // Try next page

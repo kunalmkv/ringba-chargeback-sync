@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta content='text/html; charset=utf-8' http-equiv='content-type'>
+<title>Call API Results for Clickdee</title>
+<link href='//ajax.googleapis.com/ajax/libs/jqueryui/1.11.0/themes/smoothness/jquery-ui.css' rel='stylesheet'>
+<link crossorigin='anonymous' href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css' integrity='sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7' rel='stylesheet'>
+<link crossorigin='anonymous' href='https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css' integrity='sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+' rel='stylesheet'>
+<link rel="stylesheet" media="all" href="/assets/application-76a5d8bd455621d6c32c1a778ac830ee00fc2f52b9949b322d883045744d9efa.css" />
+<link rel="stylesheet" media="all" href="/assets/consumer-b6dae76ae8eb5de620e28b5fcac32be6a0d31aad237aef1ecf17fff64ed82d6b.css" />
+<!--[if lte IE 8]>
+<link rel="stylesheet" media="all" href="/assets/ie_8-f8b8c19f8ab4d9b1d8d6569c2898938d35d60bef894992b11c3f668b094c9e0b.css" />
+<![endif]-->
+<!--[if IE 7]>
+<link rel="stylesheet" media="all" href="/assets/ie_7-ea13c742b6e264cc3a4b72c2c32b0da29fa0110adef1c9358995df4adf50c194.css" />
+<![endif]-->
+<meta name="csrf-param" content="authenticity_token" />
+<meta name="csrf-token" content="RPCNyAGMej9EWGSB+GYtz6lu+SKFY30/rq0CFxl7EPxVfLprUKP+OyTE1f6RGJd38DxKNPycVR2uwQo3Tz0yxQ==" />
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+  ga('create', 'UA-11139591-1', 'auto');
+  ga('create', 'UA-11139591-3', 'auto', 'AllSites');
+  ga('send', 'pageview');
+  ga('AllSites.send', 'pageview');
+</script>
+
+</head>
+<body>
+<script src='//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js'></script>
+<script src='//ajax.googleapis.com/ajax/libs/jqueryui/1.11.0/jquery-ui.min.js'></script>
+<script crossorigin='anonymous' integrity='sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS' src='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js'></script>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.12/jquery.mask.js'></script>
+<script src="/packs/js/jquery-plugins-d235915eff7466f7b744.js" id="jquery-plugins" async="async"></script>
+<script>
+  // When needing a JQuery plugin loaded in the jquery-plugins pack, you will need to wrap any calls in this function
+  var jqPluginLoaded = false;
+  var jqCallbacks = []
+  $('#jquery-plugins').on('load', function() {
+    jqPluginLoaded = true;
+    $.each(jqCallbacks, function(idx, callback) { callback(); })
+  });
+  
+  function loadJQPlugin(callback) {
+    if (jqPluginLoaded) {
+      callback();
+    } else {
+      jqCallbacks.push(callback);
+    }
+  }
+</script>
+
+<header class='nav-banner'>
+<button class='c-hamburger c-hamburger--htx'>
+<span>toggle menu</span>
+</button>
+<div class='container nav-banner-container'>
+<a class='nav-header--elocal-logo navbar-brand' data-ga-action='Logo' data-ga-location='Header' href='/'><span class='e'>e</span><span>Local</span><small>.com</small></a>
+<nav class='nav-element'>
+<div class='nav-container'>
+<div class='menu-top-right-container'>
+<ul class='nav-list' id='menu-top-right'>
+<li class='nav-item'><a href="/partner_users/partner_call_post_config/edit">Call Post Config</a></li>
+<li class='nav-item'><a href="/partner_users/campaigns">My Campaigns</a></li>
+<li class='nav-item'><a href="/partner_users/edit_login_information">My Account</a></li>
+<li class='nav-item'><a href="https://elocal.com/business_users/logout">Log Out</a></li>
+
+</ul>
+</div>
+</div>
+</nav>
+</div>
+</header>
+<script>
+  $(document).ready(function() {
+    $('.c-hamburger').on('click', function() {
+      $(this).toggleClass('is-active');
+      $('.nav-element').toggleClass('element-active');
+    });
+  
+    $('.c-hamburger-menu').on('click', function() {
+      $(this).toggleClass('is-active');
+      $('.nav-element').toggleClass('element-active');
+    });
+  });
+  
+  $('.dropdown').on('show.bs.dropdown', function () {
+    var elFirst = $(this).children().children('.fa-chevron-down');
+    var elSecond = $(this).children().children('.fa-close');
+    elFirst.addClass('hide-icon');
+    elSecond.removeClass('hide-icon');
+  });
+  $('.dropdown').on('hide.bs.dropdown', function () {
+    var elFirst = $(this).children().children('.fa-chevron-down');
+    var elSecond = $(this).children().children('.fa-close');
+    elFirst.removeClass('hide-icon');
+    elSecond.addClass('hide-icon');
+  });
+</script>
+<script>
+  $(function(){
+    $('.dropdown').hover(function() {
+        $(this).addClass('open');
+    },
+    function() {
+        $(this).removeClass('open');
+    });
+  });
+</script>
+
+<div class='header-spacer'><section class='container'>
+<article class='business-user-show spacer-large top'>
+<div class='menu-div'>
+<div class='row'>
+<div class='col-md-8'><h2>Clickdee<small class='margin-sidegap10'>&mdash;Call API Results</small></h2></div>
+</div>
+</div>
+<div class='bu-container min-height-450'>
+<div class='row margin-gap20'>
+<div class='col-md-12'>
+<ol class='breadcrumb'>
+<li><a href="/partner_users/campaigns">My Campaigns</a></li>
+<li>Clickdee Call API</li>
+</ol>
+<form action="/partner_users/campaign_results" accept-charset="UTF-8" method="get"><input name="utf8" type="hidden" value="&#x2713;" autocomplete="off" />
+<div class='section-title-span'>
+<div class='reportrange inline-block'>
+<i class='fa fa-calendar fa-lg'></i>
+<span>
+11/14/2025 - 11/14/2025
+</span>
+</div>
+</div>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.19.1/moment.min.js' type='text/javascript'></script>
+<script src='//cdn.jsdelivr.net/bootstrap.daterangepicker/2/daterangepicker.js' type='text/javascript'></script>
+<link href='//cdn.jsdelivr.net/bootstrap.daterangepicker/2/daterangepicker.css' rel='stylesheet' type='text/css'>
+<script>
+  var base_url = '/partner_users/campaign_results?caller_phone_number=&amp;id=46775&amp;page=2';
+  $('.reportrange').daterangepicker(
+    {
+      ranges: {
+        "Today": [moment().startOf('day'), moment()],
+        'Yesterday': [moment().subtract(1, 'day').startOf('day'), moment().subtract(1, 'day').endOf('day')],
+        'This Month': [moment().startOf('month'), moment().endOf('month')],
+        'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')],
+        "Last 30 Days":  [moment().subtract(29, 'days'), moment()],
+        "Last 60 Days":  [moment().subtract(59, 'days'), moment()],
+        "Last 90 Days":  [moment().subtract(89, 'days'), moment()],
+        "Last 6 Months": [moment().subtract(6, 'months'), moment()],
+        "Last Year":     [moment().subtract(1, 'years'), moment()],
+        'Year to Date' : [moment().startOf('year'), moment()]
+      },
+      startDate: moment("2025-11-14", "YYYY-MM-DD"),
+      endDate: moment("2025-11-14", "YYYY-MM-DD")
+    },
+    function(start, end) {
+      s = start.format('YYYY-MM-DD')
+      e = end.format('YYYY-MM-DD')
+      $('.reportrange span').html(s + ' - ' + e);
+      url = base_url+"&start_date="+s+"&end_date="+e;
+      $(location).attr('href',url);
+    }
+  );
+</script>
+
+<div class='section-title-span'>
+<input type="hidden" name="id" id="id" value="46775" autocomplete="off" />
+<input type="hidden" name="start_date" id="start_date" value="2025-11-14" autocomplete="off" />
+<input type="hidden" name="end_date" id="end_date" value="2025-11-14" autocomplete="off" />
+<input type="text" name="caller_phone_number" id="caller_phone_number" value="" class="form-control phone-masked" placeholder="Caller ID" readonly="readonly" />
+</div>
+<div class='section-title-span'>
+<a class="flat-btn blue inline-block" href="/partner_users/campaign_results?end_date=2025-11-14&amp;id=46775&amp;start_date=2025-11-14">Search</a>
+</div>
+<div class='section-title-span' style='margin-left: 1%'>
+<a class="flat-btn bright-blue inline-block" target="_blank" href="/partner_users/export?end_date=2025-11-14&amp;id=46775&amp;start_date=2025-11-14">Export Calls</a>
+</div>
+</form>
+
+<h5 class='margin-topgap20'>Totals</h5>
+<table class='business-user-table table table-bordered table-condensed table-striped'>
+<thead>
+<tr>
+<th>
+Total
+<i class='glyphicon glyphicon-info-sign' data-toggle='tooltip' title='Number of converted calls sent to eLocal'></i>
+</th>
+<th>
+Unique
+<i class='glyphicon glyphicon-info-sign' data-toggle='tooltip' title='Number of converted calls with unique Caller IDs'></i>
+</th>
+<th>
+Payout
+<i class='glyphicon glyphicon-info-sign' data-toggle='tooltip' title='$ amount of eLocal payout'></i>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>45</td>
+<td>44</td>
+<td>$385.50</td>
+</tr>
+</tbody>
+</table>
+<table class='business-user-table table table-bordered table-condensed table-striped'>
+<thead>
+<tr>
+<th>Date of Call</th><th><span class='block'>Category</span>
+<span class='block'>Call Category</span></th><th>
+<span class='block'>Caller ID</span>
+<span class='block'>Caller Name</span>
+</th>
+<th>Call Price</th>
+<th>
+<span class='block'>
+Duration
+<i class='glyphicon glyphicon-info-sign' data-toggle='tooltip' title='Duration with service provider'></i>
+</span>
+<span class='block'>
+Total Call Duration
+<i class='glyphicon glyphicon-info-sign' data-toggle='tooltip' title='Total Duration with eLocal'></i>
+</span>
+<span class='block'>
+Billable Call Duration
+<i class='glyphicon glyphicon-info-sign' data-toggle='tooltip' title='Duration required for call to trigger a payout'></i>
+</span>
+</th>
+<th>
+<span class='block'>Tracking #</span>
+<span class='block'>Forwarded To #</span>
+</th>
+<th>
+Ping Token
+<i class='glyphicon glyphicon-info-sign' data-toggle='tooltip' title='eLocal Unique Identifier for the ping resulting in the call'></i>
+</th>
+<th>
+Call SID
+<i class='glyphicon glyphicon-info-sign' data-toggle='tooltip' title='eLocal Unique Identifier for the call'></i>
+</th>
+</tr>
+</thead>
+<tbody>
+</tbody>
+<div class='row'><div class='col-md-12 text-center'><hr class='clear-both'></div></div>
+</table>
+</div>
+</div>
+</div>
+</article>
+</section>
+<script>
+  $("[data-toggle='tooltip']").tooltip();
+  $(".phone-masked").mask("(999) 999-9999");
+</script>
+</div>
+<div class='footer'>
+<div class='container'>
+<div class='row'>
+<div class='col-md-6'>
+<div class='live-local-logo'>
+<div class='elocal-ico-container'>
+<svg shape-rendering="geometricPrecision" color-rendering="optimizeQuality" viewBox="0 0 110 170" class="elocal-ico elocal-ico" title=""><use xlink:href="#elocal-ico"></use></svg>
+<div class='elocal-logo elocal-logo-footer padding-gap0'>
+<h1 class='elocal-logo-footer-title'>
+<a data-ga-action='Logo' data-ga-location='Header' href='/'><span class='e'>e</span><span>Local</span><small>.com</small></a>
+</h1><h4 class='elocal-logo-text'>&copy;2025 eLocal USA LLC</h4></div>
+</div>
+</div>
+<div class='footer-social-icons'>
+<p>Follow Us on Social Media</p>
+<ul class='list-inline'>
+<li>
+<a class='footer-social-link' data-ga-action='View-Twitter' data-ga-identifier='125b6f95e251e23210ec492d2807e09b' data-ga-location='Footer' href='https://twitter.com/eLocal?lang=en' target='_blank' title='Twitter'><svg shape-rendering="geometricPrecision" color-rendering="optimizeQuality" viewBox="0 0 100 100" class="footer-social-ico twitter-bird-ico" title=""><use xlink:href="#twitter-bird-ico"></use></svg></a>
+</li>
+<li>
+<a class='footer-social-link' data-ga-action='View-Instagram' data-ga-identifier='125b6f95e251e23210ec492d2807e09b' data-ga-location='Footer' href='https://www.instagram.com/elocalusa/' target='_blank' title='Instagram'><svg shape-rendering="geometricPrecision" color-rendering="optimizeQuality" viewBox="0 0 100 100" class="footer-social-ico instagram-ico" title=""><use xlink:href="#instagram-ico"></use></svg></a>
+</li>
+<li>
+<a class='footer-social-link' data-ga-action='View-Facebook' data-ga-identifier='125b6f95e251e23210ec492d2807e09b' data-ga-location='Footer' href='https://www.facebook.com/eLocal/' target='_blank' title='Facebook'><svg shape-rendering="geometricPrecision" color-rendering="optimizeQuality" viewBox="0 0 100 100" class="footer-social-ico facebook-rounded-ico" title=""><use xlink:href="#facebook-rounded-ico"></use></svg></a>
+</li>
+<li>
+<a class='footer-social-link' data-ga-action='View-Linkedin' data-ga-identifier='125b6f95e251e23210ec492d2807e09b' data-ga-location='Footer' href='https://www.linkedin.com/company/elocal' target='_blank' title='LinkedIn'><svg shape-rendering="geometricPrecision" color-rendering="optimizeQuality" viewBox="0 0 100 100" class="footer-social-ico linkedin-rounded-ico" title=""><use xlink:href="#linkedin-rounded-ico"></use></svg></a>
+</li>
+</ul>
+</div>
+</div>
+<div class='col-md-6'>
+<nav class='footer-nav'>
+<div class='col-md-6 col-md-offset-0 col-sm-5 col-sm-offset-2 col-xs-6 col-xs-offset-1'>
+<ul class='list-unstyled'>
+<li><a data-ga-action="About" data-ga-location="Footer" href="/information#about">About eLocal</a></li>
+<li><a data-ga-action="Contact" data-ga-location="Footer" href="/information#contact">Contact Us</a></li>
+<li><a data-ga-action="Consumer Reviews" data-ga-location="Footer" href="https://elocal.com/elocal-reviews">eLocal Reviews</a></li>
+<li><a data-ga-action="Advertising" data-ga-location="Footer" href="https://elocal.com/advertising?ad_type=chooser">Advertising</a></li>
+<li><a data-ga-action="careers" data-ga-location="Footer" href="/careers">Careers</a></li>
+<li><a data-ga-action="AdvertiserTerms" data-ga-location="Footer" href="/information#advertiser_terms">Advertiser Terms</a></li>
+</ul>
+</div>
+<div class='col-md-6 col-sm-4 col-xs-5'>
+<ul class='list-unstyled'>
+<li><a data-ga-action="Press" data-ga-location="Footer" href="/information#media_kit">Press</a></li>
+<li><a data-ga-action="Terms" data-ga-location="Footer" href="/information#terms">Terms &amp; Conditions</a></li>
+<li><a data-ga-action="Privacy" data-ga-location="Footer" href="/information#privacy">Your Privacy Rights</a></li>
+<li><a data-ga-action="PrivacyCalifornia" data-ga-location="Footer" href="/information#privacy_california">California Privacy Notice</a></li>
+<li><a data-ga-action="DoNotSellCalifornia" data-ga-location="Footer" href="/information#california-do-not-sell">Do Not Sell My Info</a></li>
+<li><a data-ga-action="AccessibleView" data-ga-location="Footer" href="/information#accessible_view">Accessible View Page</a></li>
+<li class='visible-sm visible-xs'><a data-ga-action="ViewFullSite" data-ga-location="MobileNavFooter" href="/partner_users/campaign_results?skip_mobile=true">View Desktop Site</a></li>
+<li>
+<a data-ga-action='BBB' data-ga-identifier='/partner_users/campaign_results?caller_phone_number=&amp;end_date=2025-11-14&amp;id=46775&amp;page=2&amp;start_date=2025-11-14' data-ga-location='TopNav' href='http://www.bbb.org/washington-dc-eastern-pa/business-reviews/advertising-internet/elocal-com-in-conshohocken-pa-193219390/#bbbonlineclick' target='_blank' title='eLocal.com BBB Business Review'>
+<svg id='bbb_ico' viewbox='0 0 735.1 257.42' xmlns='http://www.w3.org/2000/svg'>
+<g data-name='Layer 2' id='Layer_2'>
+<g data-name='Layer 1' id='Layer_1-2'>
+<path class='cls-1' d='M681.89,223.62V33.8A31.16,31.16,0,0,0,650.73,2.64H235V254.78H650.73a31.16,31.16,0,0,0,31.16-31.16'></path>
+<path class='cls-1' d='M650.73,257.42H232.37V0H650.73a33.84,33.84,0,0,1,33.8,33.8V223.62a33.84,33.84,0,0,1-33.8,33.8m-413.08-5.28H650.73a28.55,28.55,0,0,0,28.52-28.52V33.8A28.55,28.55,0,0,0,650.73,5.28H237.65Z'></path>
+<path class='cls-2' d='M102.95,85.09l-10.87,15c-5.45,7.51-3.76,20.81,3.68,26.18l20.16,14.55c3.46,2.5,3.73,5,2.09,7.61l2.93,2.18,10.21-14.14c6.31-8.74,5.76-20.63-3.6-27.44L107.21,94.21c-2.43-1.78-2.69-4.25-1.34-7l-2.93-2.09'></path>
+<path class='cls-2' d='M120.39,18.89,103.46,42.3C95.52,53.28,98.41,72,109.26,80l27.83,20.43c5.64,4.14,6.38,14.69,2.27,20.09l2.36,1.77,19.2-27c8.62-12.13,8.12-30.05-5.42-39.88L125.73,33.78c-4.17-3-6.25-8.17-2.78-13.08l-2.56-1.81'></path>
+<path class='cls-2' d='M75.78,165.72H98.21l4,13.6h36.66l4-13.6h22.44l-2.94-10H78.72l-2.94,10'></path>
+<path class='cls-2' d='M86.29,211.22c3.94-2.31,6.36-5.7,6.36-10.35,0-9.29-7.61-13.08-15.92-13.08H53.53v49.33h23c9.82,0,20.22-4.29,18.54-15.59-1-6.47-3.56-8-8.77-10.32M64,197.23H76.08c7.53,0,7.8,10.52.47,10.52H64ZM77.47,227.8H64V216.55H77.47C87.36,216.55,86.75,227.8,77.47,227.8Z'></path>
+<path class='cls-2' d='M132.35,211.22c3.94-2.31,6.36-5.7,6.36-10.35,0-9.29-7.61-13.08-15.92-13.08H99.59v49.33h23c9.81,0,20.22-4.29,18.54-15.59-1-6.47-3.56-8-8.77-10.32m-22.26-14h12.05c7.53,0,7.8,10.52.47,10.52H110.09Zm13.44,30.58H110.09V216.55h13.44C133.41,216.55,132.81,227.8,123.53,227.8Z'></path>
+<path class='cls-2' d='M187.18,221.54c-1-6.47-3.56-8-8.77-10.32,3.94-2.31,6.36-5.7,6.36-10.35,0-9.29-7.61-13.08-15.92-13.08h-23.2v49.33h23c9.81,0,20.22-4.29,18.54-15.59m-31-24.31H168.2c7.53,0,7.8,10.52.47,10.52H156.15Zm13.44,30.58H156.15V216.55h13.44C179.47,216.55,178.87,227.8,169.59,227.8Z'></path>
+<path class='cls-3' d='M300.48,118.38l-2.25-6.21H282.5l-2.31,6.21h-8.91L285.47,81.7h9.79l14.13,36.68ZM290.37,89.5l-5.72,15.78h11.44Z'></path>
+<path class='cls-3' d='M311.43,100.06c0-11.27,8.52-19,19.52-19a16.79,16.79,0,0,1,15.34,9l-6.71,3.3A9.94,9.94,0,0,0,331,88c-6.65,0-11.49,5.11-11.49,12s4.84,12,11.49,12a9.83,9.83,0,0,0,8.63-5.33L346.3,110c-2.64,4.56-7.26,9-15.34,9C320,119,311.43,111.34,311.43,100.06Z'></path>
+<path class='cls-3' d='M349.6,100.06c0-11.27,8.52-19,19.52-19a16.79,16.79,0,0,1,15.34,9l-6.71,3.3A9.94,9.94,0,0,0,369.12,88c-6.65,0-11.49,5.11-11.49,12s4.84,12,11.49,12a9.83,9.83,0,0,0,8.63-5.33l6.71,3.24c-2.64,4.56-7.26,9-15.34,9C358.13,119,349.6,111.34,349.6,100.06Z'></path>
+<path class='cls-3' d='M410.26,118.38l-7.2-13h-5.72v13h-7.81V81.7h17.16c7.64,0,12.32,5,12.32,11.82,0,6.49-4.07,10-8,10.89l8.25,14ZM411,93.52c0-3.08-2.36-4.95-5.5-4.95h-8.19v9.9h8.19C408.67,98.47,411,96.6,411,93.52Z'></path>
+<path class='cls-3' d='M425.28,118.38V81.7h26v6.87H433.09v7.75h17.76v6.87H433.09v8.3h18.15v6.87Z'></path>
+<path class='cls-3' d='M457.73,118.38V81.7h14.46c11.49,0,19.47,7.31,19.47,18.37s-8,18.31-19.47,18.31Zm26-18.31c0-6.49-4-11.49-11.49-11.49h-6.65V111.5h6.65C479.45,111.5,483.69,106.28,483.69,100.06Z'></path>
+<path class='cls-3' d='M497.61,118.38V81.7h7.81v36.68Z'></path>
+<path class='cls-3' d='M521.53,118.38V88.57H510.8V81.7h29.26v6.87H529.39v29.81Z'></path>
+<path class='cls-3' d='M545.45,118.38V81.7h26v6.87H553.26v7.75H571v6.87H553.26v8.3h18.15v6.87Z'></path>
+<path class='cls-3' d='M577.9,118.38V81.7h14.46c11.49,0,19.47,7.31,19.47,18.37s-8,18.31-19.47,18.31Zm26-18.31c0-6.49-4-11.49-11.49-11.49h-6.65V111.5h6.65C599.63,111.5,603.86,106.28,603.86,100.06Z'></path>
+<path class='cls-3' d='M275.19,181.38V144.7h19.3c7,0,10.56,4.45,10.56,9.35,0,4.62-2.86,7.7-6.32,8.41,3.9.6,7,4.4,7,9,0,5.5-3.68,9.9-10.67,9.9Zm21.89-26a4,4,0,0,0-4.29-4H283v8h9.79C295.42,159.38,297.07,157.73,297.07,155.42Zm.71,15c0-2.31-1.65-4.29-4.73-4.29H283v8.52h10.06C296,174.61,297.79,173,297.79,170.38Z'></path>
+<path class='cls-3' d='M312,166.75V144.7H320v21.78c0,5.11,3,8.63,8.63,8.63s8.58-3.52,8.58-8.63V144.7h8v22c0,9.13-5.39,15.34-16.55,15.34S312,175.77,312,166.75Z'></path>
+<path class='cls-3' d='M350.26,176.21l4.23-5.94a16.08,16.08,0,0,0,11.66,4.95c4.29,0,6.38-2,6.38-4.07,0-2.69-3.41-3.46-7.42-4.45-6-1.37-13.69-3-13.69-11.38,0-6.1,5.28-11.16,13.91-11.16,5.83,0,10.67,1.76,14.3,5.11L375.28,155a15.75,15.75,0,0,0-10.67-4c-3.35,0-5.22,1.49-5.22,3.68,0,2.37,3.35,3.13,7.31,4.07,6,1.43,13.75,3.25,13.75,11.55,0,6.71-4.78,11.77-14.68,11.77C358.73,182,353.67,179.67,350.26,176.21Z'></path>
+<path class='cls-3' d='M386.12,181.38V144.7h7.81v36.68Z'></path>
+<path class='cls-3' d='M426.87,181.38l-17.49-23.92v23.92h-7.81V144.7h8l17,23v-23h7.81v36.68Z'></path>
+<path class='cls-3' d='M442.05,181.38V144.7h26v6.87H449.86v7.75h17.76v6.87H449.86v8.3H468v6.87Z'></path>
+<path class='cls-3' d='M472,176.21l4.23-5.94a16.08,16.08,0,0,0,11.66,4.95c4.29,0,6.38-2,6.38-4.07,0-2.69-3.41-3.46-7.42-4.45-6-1.37-13.69-3-13.69-11.38,0-6.1,5.28-11.16,13.91-11.16,5.83,0,10.67,1.76,14.3,5.11L497.05,155a15.76,15.76,0,0,0-10.67-4c-3.35,0-5.22,1.49-5.22,3.68,0,2.37,3.36,3.13,7.31,4.07,6,1.43,13.75,3.25,13.75,11.55,0,6.71-4.78,11.77-14.68,11.77C480.5,182,475.44,179.67,472,176.21Z'></path>
+<path class='cls-3' d='M505.42,176.21l4.23-5.94a16.08,16.08,0,0,0,11.66,4.95c4.29,0,6.38-2,6.38-4.07,0-2.69-3.41-3.46-7.42-4.45-6-1.37-13.69-3-13.69-11.38,0-6.1,5.28-11.16,13.91-11.16,5.83,0,10.67,1.76,14.3,5.11L530.44,155a15.76,15.76,0,0,0-10.67-4c-3.35,0-5.22,1.49-5.22,3.68,0,2.37,3.36,3.13,7.31,4.07,6,1.43,13.75,3.25,13.75,11.55,0,6.71-4.78,11.77-14.68,11.77C513.88,182,508.82,179.67,505.42,176.21Z'></path>
+<path class='cls-1' d='M691.66,235.75v-.12a21.72,21.72,0,0,1,43.44-.12v.12a21.72,21.72,0,0,1-43.44.12Zm41.46-.12v-.12a19.74,19.74,0,1,0-39.48.12v.12a19.74,19.74,0,1,0,39.48-.12Zm-28.26-11.76h10a9.27,9.27,0,0,1,6.6,2.34,5.86,5.86,0,0,1,1.8,4.32v.12c0,3.6-2.4,5.76-5.76,6.54l6.9,8.94h-4.08l-6.42-8.4h-5.7v8.4h-3.3Zm9.66,10.92c3.12,0,5.28-1.44,5.28-4v-.12c0-2.34-1.92-3.84-5.1-3.84h-6.54v7.92Z'></path>
+<path class='cls-1' d='M237.65,257.42H33.8A33.84,33.84,0,0,1,0,223.62V33.8A33.84,33.84,0,0,1,33.8,0H237.65V257.42M33.8,5.28A28.55,28.55,0,0,0,5.28,33.8V223.62A28.55,28.55,0,0,0,33.8,252.14H232.37V5.28Z'></path>
+</g>
+</g>
+</svg>
+</a>
+</li>
+</ul>
+</div>
+</nav>
+</div>
+</div>
+<input id='request_form_version' name='request_form_version' type='hidden'>
+</div>
+</div>
+
+</body>
+</html>

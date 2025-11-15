@@ -21,7 +21,7 @@ import {
 } from '../utils/date-utils.js';
 
   // Base scraping workflow with date range support
-const scrapeElocalDataWithDateRange = (config) => (dateRange) => (serviceType = 'unknown') => (category = 'STATIC') => {
+export const scrapeElocalDataWithDateRange = (config) => (dateRange) => (serviceType = 'unknown') => (category = 'STATIC') => {
   const session = createSession();
   // Include service type (historical/current) and category in session_id for filtering
   session.sessionId = `${serviceType}_${category.toLowerCase()}_${session.sessionId}_${dateRange.startDateFormatted.replace(/\//g, '-')}_to_${dateRange.endDateFormatted.replace(/\//g, '-')}`;
@@ -53,14 +53,19 @@ const scrapeElocalDataWithDateRange = (config) => (dateRange) => (serviceType = 
         
         console.log(`[INFO] Fetched ${paginatedData.pagesFetched} page(s) with ${rawCalls.length} total calls${includeAdjustments ? ` and ${rawAdjustments.length} total adjustments` : ''}`);
         
+        // Add category to raw calls BEFORE processing so deduplication can use it
+        // This ensures that calls with same callerId but different times/categories are preserved
+        rawCalls.forEach(call => {
+          call.category = category;
+        });
+        
         const processedAdjustments = includeAdjustments ? processAdjustmentDetails(rawAdjustments) : [];
         const processedCalls = processCampaignCalls(rawCalls);
-        // Add category to all calls - ensure it's set before any processing
+        
+        // Ensure category is preserved after processing
         processedCalls.forEach(call => { 
-          call.category = category;
-          // Debug: verify category is set
           if (!call.category) {
-            console.warn(`[WARN] Category not set for call: ${call.callerId}`);
+            call.category = category;
           }
         });
         
@@ -77,15 +82,16 @@ const scrapeElocalDataWithDateRange = (config) => (dateRange) => (serviceType = 
         
         // For API and STATIC categories: Look up payout from Ringba for each caller ID
         // API category: Uses "call price" from eLocal, but we need to get actual payout from Ringba
-        // STATIC category: Verifies payout matches Ringba, updates if mismatch found
-        if ((category === 'API' || category === 'STATIC') && config.ringbaAccountId && config.ringbaApiToken) {
-          console.log(`[INFO] ${category} category: Looking up payout values from Ringba for all calls...`);
+        // STATIC category: Verifies payout matches Ringba, but keeps eLocal values
+        // API category: Uses eLocal "call price" values only (no Ringba lookup)
+        if (category === 'STATIC' && config.ringbaAccountId && config.ringbaApiToken) {
+          console.log(`[INFO] ${category} category: Verifying payout values against Ringba (keeping eLocal values)...`);
           const { findCallByCallerIdAndTime, getCallDetails } = await import('../http/ringba-client.js');
           
           let payoutLookups = 0;
           let payoutFound = 0;
           let payoutNotFound = 0;
-          let payoutMismatches = 0; // For STATIC category: tracks mismatches
+          let payoutMismatches = 0; // Tracks mismatches for Ringba sync
           
           for (const call of processedCalls) {
             try {
@@ -105,7 +111,7 @@ const scrapeElocalDataWithDateRange = (config) => (dateRange) => (serviceType = 
                 call.callerId,
                 call.dateOfCall,
                 60, // 60 minute window
-                category === 'STATIC' ? eLocalPayout : null // For STATIC: pass expected payout for better matching
+                eLocalPayout // Pass expected payout for better matching
               )();
               
               if (lookupEither._tag === 'Right' && lookupEither.right) {
@@ -118,26 +124,18 @@ const scrapeElocalDataWithDateRange = (config) => (dateRange) => (serviceType = 
                 if (detailsEither._tag === 'Right' && detailsEither.right) {
                   const ringbaPayout = detailsEither.right.payout || 0;
                   
-                  if (category === 'API') {
-                    // API category: Always update payout from Ringba (overwrite the "call price" from eLocal)
-                    call.payout = ringbaPayout;
+                  // STATIC category: Compare payouts but KEEP eLocal payout
+                  // If mismatch: Keep eLocal payout, mark for Ringba sync (Ringba will be updated to match eLocal)
+                  const payoutDiff = Math.abs(ringbaPayout - eLocalPayout);
+                  if (payoutDiff > 0.01) {
+                    // Payout mismatch detected - keep eLocal payout, will update Ringba later
+                    payoutMismatches++;
+                    console.log(`[INFO] STATIC category: Payout mismatch detected for ${call.callerId}: eLocal=$${eLocalPayout.toFixed(2)}, Ringba=$${ringbaPayout.toFixed(2)} (diff=$${payoutDiff.toFixed(2)}). Will sync to Ringba.`);
+                    // Keep eLocal payout (don't change it), Ringba sync service will update Ringba to match eLocal
+                  } else {
+                    // Payout matches - no update needed
                     payoutFound++;
-                    console.log(`[INFO] API category: Updated payout for ${call.callerId}: $${ringbaPayout} (from Ringba)`);
-                  } else if (category === 'STATIC') {
-                    // STATIC category: Compare payouts and mark for sync if mismatch
-                    // If mismatch: Keep eLocal payout, mark for Ringba sync (Ringba will be updated to match eLocal)
-                    const payoutDiff = Math.abs(ringbaPayout - eLocalPayout);
-                    if (payoutDiff > 0.01) {
-                      // Payout mismatch detected - keep eLocal payout, will update Ringba later
-                      payoutMismatches++;
-                      console.log(`[INFO] STATIC category: Payout mismatch detected for ${call.callerId}: eLocal=$${eLocalPayout.toFixed(2)}, Ringba=$${ringbaPayout.toFixed(2)} (diff=$${payoutDiff.toFixed(2)}). Will sync to Ringba.`);
-                      // Keep eLocal payout (don't change it), Ringba sync service will update Ringba to match eLocal
-                      // The call will be saved with eLocal payout, and Ringba sync will update Ringba
-                    } else {
-                      // Payout matches - no update needed
-                      payoutFound++;
-                      console.log(`[INFO] STATIC category: Payout matches for ${call.callerId}: $${ringbaPayout.toFixed(2)}`);
-                    }
+                    console.log(`[INFO] STATIC category: Payout matches for ${call.callerId}: $${ringbaPayout.toFixed(2)}`);
                   }
                   
                   // Store Ringba inbound call ID for future reference
@@ -162,13 +160,11 @@ const scrapeElocalDataWithDateRange = (config) => (dateRange) => (serviceType = 
             }
           }
           
-          if (category === 'API') {
-            console.log(`[INFO] API category: Ringba lookup summary - Looked up: ${payoutLookups}, Found: ${payoutFound}, Not found: ${payoutNotFound}`);
-            console.log(`[INFO] API category: ${payoutFound} calls updated with Ringba payout, ${payoutNotFound} calls keeping eLocal "call price" value`);
-          } else if (category === 'STATIC') {
-            console.log(`[INFO] STATIC category: Ringba lookup summary - Looked up: ${payoutLookups}, Found: ${payoutFound}, Mismatches: ${payoutMismatches}, Not found: ${payoutNotFound}`);
-            console.log(`[INFO] STATIC category: ${payoutFound} calls with matching payout, ${payoutMismatches} calls with payout mismatch (will be synced to Ringba)`);
-          }
+          console.log(`[INFO] STATIC category: Ringba lookup summary - Looked up: ${payoutLookups}, Found: ${payoutFound}, Mismatches: ${payoutMismatches}, Not found: ${payoutNotFound}`);
+          console.log(`[INFO] STATIC category: ${payoutFound} calls with matching payout, ${payoutMismatches} calls with payout mismatch (will be synced to Ringba)`);
+        } else if (category === 'API') {
+          // API category: Use eLocal "call price" values only - no Ringba lookup
+          console.log(`[INFO] API category: Using eLocal "call price" values only (no Ringba lookup)`);
         }
         
         // Save adjustment details to separate adjustment_details table (only for STATIC category)

@@ -1,0 +1,117 @@
+{
+  "category": "STATIC",
+  "date": "2025-11-14",
+  "dateRange": {
+    "start": "11/14/2025",
+    "end": "11/14/2025"
+  },
+  "campaignId": "50033",
+  "pagesFetched": 3,
+  "totalCalls": 13,
+  "totalAdjustments": 1,
+  "totalPayout": 282.1,
+  "savedFiles": [
+    "page-001_calls-13_adjustments-1.html",
+    "page-002_calls-0_adjustments-1.html",
+    "page-003_calls-0_adjustments-1.html",
+    "page-004_calls-0_adjustments-1.html"
+  ],
+  "calls": [
+    {
+      "caller_id": "(682) 380-6899",
+      "date_of_call": "11/14/25 09:04 AM EST",
+      "payout": 31.5,
+      "classification": "Auto Accept - IVR",
+      "city_state": "Fort Worth, TX"
+    },
+    {
+      "caller_id": "(904) 240-9517",
+      "date_of_call": "11/14/25 10:24 AM EST",
+      "payout": 0,
+      "classification": "",
+      "city_state": ""
+    },
+    {
+      "caller_id": "(615) 507-9493",
+      "date_of_call": "11/14/25 10:25 AM EST",
+      "payout": 37.1,
+      "classification": "New Customer Call",
+      "city_state": "Goodlettsville, TN"
+    },
+    {
+      "caller_id": "(571) 247-8166",
+      "date_of_call": "11/14/25 11:48 AM EST",
+      "payout": 0,
+      "classification": "",
+      "city_state": "Bealeton, VA"
+    },
+    {
+      "caller_id": "(704) 670-6879",
+      "date_of_call": "11/14/25 12:15 PM EST",
+      "payout": 52.5,
+      "classification": "Auto Accept - IVR",
+      "city_state": "Charlotte, NC"
+    },
+    {
+      "caller_id": "(901) 563-4576",
+      "date_of_call": "11/14/25 12:17 PM EST",
+      "payout": 0,
+      "classification": "",
+      "city_state": ""
+    },
+    {
+      "caller_id": "(713) 817-7922",
+      "date_of_call": "11/14/25 12:34 PM EST",
+      "payout": 49,
+      "classification": "New Customer Call",
+      "city_state": "Houston, TX"
+    },
+    {
+      "caller_id": "(760) 401-4168",
+      "date_of_call": "11/14/25 12:45 PM EST",
+      "payout": 16.8,
+      "classification": "Auto Accept - IVR",
+      "city_state": "Twentynine Palms, CA"
+    },
+    {
+      "caller_id": "(704) 670-6879",
+      "date_of_call": "11/14/25 12:50 PM EST",
+      "payout": 17.5,
+      "classification": "New Customer Call",
+      "city_state": "Carmi, IL"
+    },
+    {
+      "caller_id": "(512) 934-4668",
+      "date_of_call": "11/14/25 01:06 PM EST",
+      "payout": 38.5,
+      "classification": "Auto Accept - IVR",
+      "city_state": "Austin, TX"
+    },
+    {
+      "caller_id": "(210) 744-8288",
+      "date_of_call": "11/14/25 02:47 PM EST",
+      "payout": 39.2,
+      "classification": "Auto Accept - IVR",
+      "city_state": "San Antonio, TX"
+    },
+    {
+      "caller_id": "(689) 837-7570",
+      "date_of_call": "11/14/25 03:47 PM EST",
+      "payout": 0,
+      "classification": "",
+      "city_state": ""
+    },
+    {
+      "caller_id": "(713) 302-5150",
+      "date_of_call": "11/14/25 04:51 PM EST",
+      "payout": 0,
+      "classification": "Hang-up",
+      "city_state": "Houston, TX"
+    }
+  ],
+  "adjustments": [
+    {
+      "caller_id": "(727) 687-6099"
+    }
+  ]
+}

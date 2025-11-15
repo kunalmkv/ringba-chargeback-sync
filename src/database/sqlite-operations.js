@@ -79,6 +79,32 @@ export const initializeDatabase = (config) =>
       }
     }
     
+    // Check if ringba_sync_logs table exists and add category column if missing
+    const ringbaLogsTableExists = db.prepare(`
+      SELECT name FROM sqlite_master 
+      WHERE type='table' AND name='ringba_sync_logs'
+    `).get();
+    
+    if (ringbaLogsTableExists) {
+      const ringbaLogsColumns = db.prepare(`PRAGMA table_info(ringba_sync_logs)`).all();
+      const ringbaLogsColumnNames = ringbaLogsColumns.map(col => col.name);
+      
+      if (!ringbaLogsColumnNames.includes('category')) {
+        console.log('🔄 Adding category column to ringba_sync_logs table...');
+        try {
+          db.exec(`ALTER TABLE ringba_sync_logs ADD COLUMN category TEXT;`);
+          console.log('✅ Category column added to ringba_sync_logs');
+          
+          // Create index on category column
+          db.exec(`CREATE INDEX IF NOT EXISTS idx_ringba_logs_category ON ringba_sync_logs(category);`);
+          console.log('✅ Index created on ringba_sync_logs.category');
+        } catch (error) {
+          console.error('❌ Failed to add category column to ringba_sync_logs:', error.message);
+          // Don't throw - allow service to continue
+        }
+      }
+    }
+    
     // Create simplified table with only required fields
     // Check if table exists and has correct structure
     const tableExists = db.prepare(`
@@ -100,6 +126,20 @@ export const initializeDatabase = (config) =>
           // Mark all existing rows as STATIC
           db.exec(`UPDATE elocal_call_data SET category = 'STATIC' WHERE category IS NULL;`);
           console.log('Added category column and marked existing data as STATIC');
+        }
+      }
+      // Add updated_at column if it doesn't exist
+      if (!columnNames.includes('updated_at')) {
+        console.log('🔄 Adding updated_at column to elocal_call_data table...');
+        try {
+          // SQLite doesn't allow CURRENT_TIMESTAMP in ALTER TABLE, so add without default
+          db.exec(`ALTER TABLE elocal_call_data ADD COLUMN updated_at TEXT;`);
+          // Set initial value for existing rows
+          db.exec(`UPDATE elocal_call_data SET updated_at = created_at WHERE updated_at IS NULL;`);
+          console.log('✅ updated_at column added to elocal_call_data');
+        } catch (error) {
+          console.error('❌ Failed to add updated_at column:', error.message);
+          // Don't throw - allow service to continue
         }
       }
     }
@@ -129,6 +169,7 @@ export const initializeDatabase = (config) =>
         ringba_sync_at TEXT,
         ringba_sync_response TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(caller_id, date_of_call, campaign_phone, category)
       );
       
@@ -166,6 +207,7 @@ export const initializeDatabase = (config) =>
         campaign_call_id INTEGER NOT NULL,
         date_of_call TEXT NOT NULL,
         caller_id TEXT NOT NULL,
+        category TEXT,
         adjustment_amount REAL,
         adjustment_classification TEXT,
         ringba_inbound_call_id TEXT,
@@ -196,6 +238,7 @@ export const initializeDatabase = (config) =>
       
       CREATE INDEX IF NOT EXISTS idx_ringba_logs_campaign_call_id ON ringba_sync_logs(campaign_call_id);
       CREATE INDEX IF NOT EXISTS idx_ringba_logs_caller_id ON ringba_sync_logs(caller_id);
+      CREATE INDEX IF NOT EXISTS idx_ringba_logs_category ON ringba_sync_logs(category);
       CREATE INDEX IF NOT EXISTS idx_ringba_logs_sync_status ON ringba_sync_logs(sync_status);
       CREATE INDEX IF NOT EXISTS idx_ringba_logs_sync_attempted_at ON ringba_sync_logs(sync_attempted_at);
       CREATE INDEX IF NOT EXISTS idx_ringba_logs_inbound_call_id ON ringba_sync_logs(ringba_inbound_call_id);
@@ -288,14 +331,48 @@ export const insertAdjustmentDetail = (config) => (adjustment) =>
   });
 
 // Batch insert/update campaign calls with UPSERT logic
-// If record exists (same caller_id + date_of_call + campaign_phone), update payout
+// If record exists (same caller_id + date_of_call + campaign_phone + category), update all fields
 // If record doesn't exist, insert new record
 export const insertCampaignCallsBatch = (config) => (calls) =>
   withDatabase(config)(async (db) => {
     if (R.isEmpty(calls)) return { inserted: 0, updated: 0 };
     
-    // Use INSERT OR REPLACE or INSERT ... ON CONFLICT DO UPDATE
-    // SQLite 3.24+ supports INSERT ... ON CONFLICT DO UPDATE
+    // Check if updated_at column exists
+    const columns = db.prepare(`PRAGMA table_info(elocal_call_data)`).all();
+    const columnNames = columns.map(col => col.name);
+    const hasUpdatedAt = columnNames.includes('updated_at');
+    
+    // Use INSERT ... ON CONFLICT DO UPDATE
+    // Always update all fields when a record exists to ensure latest data from elocal
+    const updateClause = hasUpdatedAt 
+      ? `payout = excluded.payout,
+        city_state = excluded.city_state,
+        zip_code = excluded.zip_code,
+        screen_duration = excluded.screen_duration,
+        post_screen_duration = excluded.post_screen_duration,
+        total_duration = excluded.total_duration,
+        assessment = excluded.assessment,
+        classification = excluded.classification,
+        adjustment_time = excluded.adjustment_time,
+        adjustment_amount = excluded.adjustment_amount,
+        adjustment_classification = excluded.adjustment_classification,
+        adjustment_duration = excluded.adjustment_duration,
+        unmatched = excluded.unmatched,
+        updated_at = CURRENT_TIMESTAMP`
+      : `payout = excluded.payout,
+        city_state = excluded.city_state,
+        zip_code = excluded.zip_code,
+        screen_duration = excluded.screen_duration,
+        post_screen_duration = excluded.post_screen_duration,
+        total_duration = excluded.total_duration,
+        assessment = excluded.assessment,
+        classification = excluded.classification,
+        adjustment_time = excluded.adjustment_time,
+        adjustment_amount = excluded.adjustment_amount,
+        adjustment_classification = excluded.adjustment_classification,
+        adjustment_duration = excluded.adjustment_duration,
+        unmatched = excluded.unmatched`;
+    
     const upsertStmt = db.prepare(`
       INSERT INTO elocal_call_data (
         date_of_call, campaign_phone, caller_id, payout,
@@ -306,22 +383,7 @@ export const insertCampaignCallsBatch = (config) => (calls) =>
         unmatched
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(caller_id, date_of_call, campaign_phone, category) 
-      DO UPDATE SET 
-        payout = excluded.payout,
-        category = COALESCE(excluded.category, category),
-        city_state = COALESCE(excluded.city_state, city_state),
-        zip_code = COALESCE(excluded.zip_code, zip_code),
-        screen_duration = COALESCE(excluded.screen_duration, screen_duration),
-        post_screen_duration = COALESCE(excluded.post_screen_duration, post_screen_duration),
-        total_duration = COALESCE(excluded.total_duration, total_duration),
-        assessment = COALESCE(excluded.assessment, assessment),
-        classification = COALESCE(excluded.classification, classification),
-        adjustment_time = COALESCE(excluded.adjustment_time, adjustment_time),
-        adjustment_amount = COALESCE(excluded.adjustment_amount, adjustment_amount),
-        adjustment_classification = COALESCE(excluded.adjustment_classification, adjustment_classification),
-        adjustment_duration = COALESCE(excluded.adjustment_duration, adjustment_duration),
-        unmatched = CASE WHEN unmatched = 1 THEN 1 ELSE COALESCE(excluded.unmatched, unmatched) END,
-        created_at = CURRENT_TIMESTAMP
+      DO UPDATE SET ${updateClause}
     `);
     
     const insertMany = db.transaction((calls) => {
@@ -333,15 +395,32 @@ export const insertCampaignCallsBatch = (config) => (calls) =>
           // Ensure category is set (default to 'STATIC' if not provided)
           const callCategory = call.category || 'STATIC';
           
-          // Check if record exists to determine if it's insert or update
+          // Check if record exists and compare values to determine if update is needed
           const existing = db.prepare(`
-            SELECT id, payout FROM elocal_call_data 
+            SELECT id, payout, city_state, zip_code, classification, 
+                   adjustment_amount, adjustment_classification
+            FROM elocal_call_data 
             WHERE caller_id = ? AND date_of_call = ? AND campaign_phone = ? AND category = ?
             LIMIT 1
           `).get(call.callerId, call.dateOfCall, call.campaignPhone, callCategory);
           
           const wasExisting = existing !== undefined;
-          const payoutChanged = wasExisting && existing.payout !== call.payout;
+          
+          // Check if any significant field has changed
+          let hasChanges = false;
+          if (wasExisting) {
+            const newPayout = parseFloat(call.payout) || 0;
+            const oldPayout = parseFloat(existing.payout) || 0;
+            if (Math.abs(newPayout - oldPayout) > 0.01) {
+              hasChanges = true;
+            }
+            // Also check other fields for changes
+            if (call.cityState !== existing.city_state ||
+                call.classification !== existing.classification ||
+                call.adjustmentAmount !== existing.adjustment_amount) {
+              hasChanges = true;
+            }
+          }
           
           // Insert or update
           upsertStmt.run(
@@ -365,17 +444,19 @@ export const insertCampaignCallsBatch = (config) => (calls) =>
           );
           
           if (wasExisting) {
-            if (payoutChanged) {
-              updated++;
-              console.log(`Updated payout for caller ${call.callerId}: ${existing.payout} -> ${call.payout}`);
-            } else {
-              // Record exists but payout unchanged
+            updated++;
+            if (hasChanges) {
+              const oldPayout = parseFloat(existing.payout) || 0;
+              const newPayout = parseFloat(call.payout) || 0;
+              if (Math.abs(newPayout - oldPayout) > 0.01) {
+                console.log(`[UPDATE] Caller ${call.callerId} (${callCategory}): payout ${oldPayout.toFixed(2)} -> ${newPayout.toFixed(2)}`);
+              }
             }
           } else {
             inserted++;
           }
         } catch (error) {
-          console.warn(`Error processing call: ${error.message}`);
+          console.warn(`[WARN] Error processing call ${call.callerId}: ${error.message}`);
           // Continue with next record
         }
       }
@@ -543,17 +624,18 @@ export const logRingbaSyncAttempt = (config) => (logData) =>
   withDatabase(config)(async (db) => {
     const stmt = db.prepare(`
       INSERT INTO ringba_sync_logs (
-        campaign_call_id, date_of_call, caller_id, adjustment_amount,
+        campaign_call_id, date_of_call, caller_id, category, adjustment_amount,
         adjustment_classification, ringba_inbound_call_id, sync_status,
         sync_completed_at, revenue, payout, lookup_result, api_request,
         api_response, error_message, retry_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     const result = stmt.run(
       logData.campaignCallId,
       logData.dateOfCall,
       logData.callerId,
+      logData.category || null,
       logData.adjustmentAmount || null,
       logData.adjustmentClassification || null,
       logData.ringbaInboundCallId || null,
@@ -583,6 +665,10 @@ export const getRingbaSyncLogs = (config) => (filters = {}) =>
     if (filters.callerId) {
       query += ' AND caller_id = ?';
       params.push(filters.callerId);
+    }
+    if (filters.category) {
+      query += ' AND category = ?';
+      params.push(filters.category);
     }
     if (filters.syncStatus) {
       query += ' AND sync_status = ?';

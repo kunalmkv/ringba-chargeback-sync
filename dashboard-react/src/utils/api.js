@@ -53,6 +53,14 @@ export const api = {
       return fetchAPI('/api/chargeback');
     }
     return fetchAPI(`/api/chargeback?limit=${limit}`);
+  },
+  serviceLogs: (service = null, sessionId = null, status = null, limit = 50) => {
+    const params = new URLSearchParams();
+    if (service) params.append('service', service);
+    if (sessionId) params.append('session_id', sessionId);
+    if (status) params.append('status', status);
+    params.append('limit', limit.toString());
+    return fetchAPI(`/api/service-logs?${params.toString()}`);
   }
 };
 

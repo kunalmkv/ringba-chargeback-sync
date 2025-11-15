@@ -193,28 +193,186 @@ const fetchAllDashboardData = () => {
       }
     };
 
-    // History data
-    const sessions = db.prepare(`
-      SELECT * FROM scraping_sessions 
+    // History data - unified view of all services
+    const allSessions = [];
+
+    // 1. Scraping sessions
+    const scrapingSessions = db.prepare(`
+      SELECT 
+        id,
+        session_id,
+        started_at,
+        completed_at,
+        status,
+        calls_scraped,
+        adjustments_scraped,
+        error_message
+      FROM scraping_sessions 
       ORDER BY started_at DESC 
-      LIMIT 50
+      LIMIT 30
     `).all();
 
-    const sessionsWithType = sessions.map(session => {
+    scrapingSessions.forEach(session => {
       let serviceType = 'unknown';
+      let serviceName = 'Unknown Service';
+      
       if (session.session_id) {
-        if (session.session_id.startsWith('historical_') || session.session_id.includes('historical')) {
-          serviceType = 'historical';
-        } else if (session.session_id.startsWith('current_') || session.session_id.includes('current')) {
-          serviceType = 'current';
+        const sessionIdLower = session.session_id.toLowerCase();
+        if (sessionIdLower.includes('historical')) {
+          if (sessionIdLower.includes('api')) {
+            serviceType = 'historical-api';
+            serviceName = 'Historical (API)';
+          } else {
+            serviceType = 'historical';
+            serviceName = 'Historical (STATIC)';
+          }
+        } else if (sessionIdLower.includes('current')) {
+          if (sessionIdLower.includes('api')) {
+            serviceType = 'current-api';
+            serviceName = 'Current Day (API)';
+          } else {
+            serviceType = 'current';
+            serviceName = 'Current Day (STATIC)';
+          }
         }
       }
-      return { ...session, serviceType };
+      
+      allSessions.push({
+        id: session.id,
+        session_id: session.session_id,
+        service_type: serviceType,
+        service_name: serviceName,
+        service_source: 'scraping',
+        started_at: session.started_at,
+        completed_at: session.completed_at,
+        status: session.status || 'unknown',
+        calls_scraped: session.calls_scraped || 0,
+        adjustments_scraped: session.adjustments_scraped || 0,
+        error_message: session.error_message || null,
+        calls: session.calls_scraped || 0,
+        adjustments: session.adjustments_scraped || 0
+      });
+    });
+
+    // 2. Ringba Sync sessions
+    try {
+      const ringbaSyncSessions = db.prepare(`
+        SELECT 
+          date(sync_completed_at) as sync_date,
+          MIN(sync_completed_at) as started_at,
+          MAX(sync_completed_at) as completed_at,
+          COUNT(*) as total_syncs,
+          SUM(CASE WHEN sync_status = 'success' THEN 1 ELSE 0 END) as successful_syncs,
+          SUM(CASE WHEN sync_status = 'failed' THEN 1 ELSE 0 END) as failed_syncs
+        FROM ringba_sync_logs
+        WHERE sync_completed_at IS NOT NULL
+        GROUP BY date(sync_completed_at) 
+        ORDER BY completed_at DESC 
+        LIMIT 10
+      `).all();
+
+      ringbaSyncSessions.forEach((session, index) => {
+        const status = session.failed_syncs > 0 ? 'partial' : (session.successful_syncs > 0 ? 'success' : 'failed');
+        allSessions.push({
+          id: `ringba-sync-${session.sync_date}-${index}`,
+          session_id: `ringba-sync-${session.sync_date}`,
+          service_type: 'ringba-sync',
+          service_name: 'Ringba Sync',
+          service_source: 'ringba-sync',
+          started_at: session.started_at,
+          completed_at: session.completed_at,
+          status: status,
+          calls_scraped: session.total_syncs || 0,
+          adjustments_scraped: session.successful_syncs || 0,
+          error_message: session.failed_syncs > 0 ? `${session.failed_syncs} syncs failed` : null,
+          calls: session.total_syncs || 0,
+          adjustments: session.successful_syncs || 0
+        });
+      });
+    } catch (error) {
+      // Ignore if table doesn't exist or query fails
+    }
+
+    // 3. Revenue Sync sessions
+    try {
+      const revenueSyncSessions = db.prepare(`
+        SELECT 
+          date(updated_at) as sync_date,
+          MIN(updated_at) as started_at,
+          MAX(updated_at) as completed_at,
+          COUNT(*) as days_processed
+        FROM revenue_summary
+        WHERE updated_at IS NOT NULL
+        GROUP BY date(updated_at) 
+        ORDER BY completed_at DESC 
+        LIMIT 10
+      `).all();
+
+      revenueSyncSessions.forEach((session, index) => {
+        allSessions.push({
+          id: `revenue-sync-${session.sync_date}-${index}`,
+          session_id: `revenue-sync-${session.sync_date}`,
+          service_type: 'revenue-sync',
+          service_name: 'Revenue Sync',
+          service_source: 'revenue-sync',
+          started_at: session.started_at,
+          completed_at: session.completed_at,
+          status: 'success',
+          calls_scraped: session.days_processed || 0,
+          adjustments_scraped: 0,
+          calls: session.days_processed || 0,
+          adjustments: 0
+        });
+      });
+    } catch (error) {
+      // Ignore if table doesn't exist or query fails
+    }
+
+    // 4. Ringba Cost Sync sessions
+    try {
+      const costSyncSessions = db.prepare(`
+        SELECT 
+          date(updated_at) as sync_date,
+          MIN(updated_at) as started_at,
+          MAX(updated_at) as completed_at,
+          COUNT(*) as calls_processed
+        FROM ringba_cost_data
+        WHERE updated_at IS NOT NULL
+        GROUP BY date(updated_at) 
+        ORDER BY completed_at DESC 
+        LIMIT 10
+      `).all();
+
+      costSyncSessions.forEach((session, index) => {
+        allSessions.push({
+          id: `ringba-cost-sync-${session.sync_date}-${index}`,
+          session_id: `ringba-cost-sync-${session.sync_date}`,
+          service_type: 'ringba-cost-sync',
+          service_name: 'Ringba Cost Sync',
+          service_source: 'ringba-cost-sync',
+          started_at: session.started_at,
+          completed_at: session.completed_at,
+          status: 'success',
+          calls_scraped: session.calls_processed || 0,
+          adjustments_scraped: 0,
+          calls: session.calls_processed || 0,
+          adjustments: 0
+        });
+      });
+    } catch (error) {
+      // Ignore if table doesn't exist or query fails
+    }
+
+    // Sort all sessions by started_at (most recent first)
+    allSessions.sort((a, b) => {
+      const dateA = new Date(a.started_at || a.completed_at || 0);
+      const dateB = new Date(b.started_at || b.completed_at || 0);
+      return dateB - dateA;
     });
 
     const history = {
-      sessions: sessionsWithType,
-      count: sessionsWithType.length
+      sessions: allSessions.slice(0, 50),
+      count: allSessions.length
     };
 
     // Activity data
@@ -551,7 +709,7 @@ const routes = {
     }
   },
 
-  // Service history endpoint
+  // Service history endpoint - unified view of all services
   '/api/history': (req, res) => {
     const db = getDb();
     if (!db) {
@@ -563,38 +721,424 @@ const routes = {
       const limit = parseInt(queryParams.limit) || 50;
       const service = queryParams.service || null;
 
-      let query = `
-        SELECT * FROM scraping_sessions 
+      const allSessions = [];
+
+      // 1. Scraping sessions (Historical, Current Day - STATIC and API)
+      let scrapingQuery = `
+        SELECT 
+          id,
+          session_id,
+          started_at,
+          completed_at,
+          status,
+          calls_scraped,
+          adjustments_scraped,
+          error_message,
+          'scraping' as service_source
+        FROM scraping_sessions 
         WHERE 1=1
       `;
       
-      // Improved filter: check if session_id starts with service type or contains it
+      // Filter by service type if specified
       if (service === 'historical') {
-        query += ` AND (session_id LIKE 'historical_%' OR session_id LIKE '%_historical_%' OR session_id LIKE '%historical%')`;
+        scrapingQuery += ` AND (LOWER(session_id) LIKE '%historical%' AND LOWER(session_id) NOT LIKE '%api%')`;
       } else if (service === 'current') {
-        query += ` AND (session_id LIKE 'current_%' OR session_id LIKE '%_current_%' OR session_id LIKE '%current%')`;
+        scrapingQuery += ` AND (LOWER(session_id) LIKE '%current%' AND LOWER(session_id) NOT LIKE '%api%')`;
+      } else if (service === 'historical-api') {
+        scrapingQuery += ` AND (LOWER(session_id) LIKE '%historical%' AND LOWER(session_id) LIKE '%api%')`;
+      } else if (service === 'current-api') {
+        scrapingQuery += ` AND (LOWER(session_id) LIKE '%current%' AND LOWER(session_id) LIKE '%api%')`;
+      } else if (service === 'ringba-sync') {
+        // Skip scraping sessions for ringba-sync filter
+        scrapingQuery += ` AND 1=0`;
+      } else if (service === 'revenue-sync') {
+        // Skip scraping sessions for revenue-sync filter
+        scrapingQuery += ` AND 1=0`;
+      } else if (service === 'ringba-cost-sync') {
+        // Skip scraping sessions for ringba-cost-sync filter
+        scrapingQuery += ` AND 1=0`;
       }
 
-      query += ` ORDER BY started_at DESC LIMIT ?`;
+      scrapingQuery += ` ORDER BY started_at DESC LIMIT ?`;
+      const scrapingSessions = db.prepare(scrapingQuery).all(limit * 2); // Get more to account for other services
 
-      const sessions = db.prepare(query).all(limit);
-
-      // Add service type to each session for frontend display
-      const sessionsWithType = sessions.map(session => {
+      // Process scraping sessions
+      scrapingSessions.forEach(session => {
         let serviceType = 'unknown';
+        let serviceName = 'Unknown Service';
+        
         if (session.session_id) {
-          if (session.session_id.startsWith('historical_') || session.session_id.includes('historical')) {
-            serviceType = 'historical';
-          } else if (session.session_id.startsWith('current_') || session.session_id.includes('current')) {
-            serviceType = 'current';
+          const sessionIdLower = session.session_id.toLowerCase();
+          if (sessionIdLower.includes('historical')) {
+            if (sessionIdLower.includes('api')) {
+              serviceType = 'historical-api';
+              serviceName = 'Historical (API)';
+            } else {
+              serviceType = 'historical';
+              serviceName = 'Historical (STATIC)';
+            }
+          } else if (sessionIdLower.includes('current')) {
+            if (sessionIdLower.includes('api')) {
+              serviceType = 'current-api';
+              serviceName = 'Current Day (API)';
+            } else {
+              serviceType = 'current';
+              serviceName = 'Current Day (STATIC)';
+            }
           }
         }
-        return { ...session, serviceType };
+        
+        allSessions.push({
+          id: session.id,
+          session_id: session.session_id,
+          service_type: serviceType,
+          service_name: serviceName,
+          service_source: 'scraping',
+          started_at: session.started_at,
+          completed_at: session.completed_at,
+          status: session.status || 'unknown',
+          calls_scraped: session.calls_scraped || 0,
+          adjustments_scraped: session.adjustments_scraped || 0,
+          error_message: session.error_message || null,
+          // Additional fields for compatibility
+          calls: session.calls_scraped || 0,
+          adjustments: session.adjustments_scraped || 0
+        });
+      });
+
+      // 2. Ringba Sync sessions (aggregate from ringba_sync_logs)
+      if (!service || service === 'ringba-sync') {
+        let ringbaQuery = `
+          SELECT 
+            date(sync_completed_at) as sync_date,
+            MIN(sync_completed_at) as started_at,
+            MAX(sync_completed_at) as completed_at,
+            COUNT(*) as total_syncs,
+            SUM(CASE WHEN sync_status = 'success' THEN 1 ELSE 0 END) as successful_syncs,
+            SUM(CASE WHEN sync_status = 'failed' THEN 1 ELSE 0 END) as failed_syncs,
+            SUM(CASE WHEN sync_status = 'not_found' THEN 1 ELSE 0 END) as not_found_syncs,
+            GROUP_CONCAT(DISTINCT category) as categories
+          FROM ringba_sync_logs
+          WHERE sync_completed_at IS NOT NULL
+        `;
+        
+        ringbaQuery += ` GROUP BY date(sync_completed_at) ORDER BY completed_at DESC LIMIT ?`;
+        const ringbaSyncSessions = db.prepare(ringbaQuery).all(limit);
+
+        // Get error messages for failed syncs in this date range
+        ringbaSyncSessions.forEach((session, index) => {
+          const status = session.failed_syncs > 0 ? 'partial' : (session.successful_syncs > 0 ? 'success' : 'failed');
+          
+          // Get sample error messages for this date
+          let errorMessages = [];
+          if (session.failed_syncs > 0) {
+            try {
+              const errorSamples = db.prepare(`
+                SELECT DISTINCT error_message
+                FROM ringba_sync_logs
+                WHERE date(sync_completed_at) = date(?)
+                  AND sync_status = 'failed'
+                  AND error_message IS NOT NULL
+                LIMIT 3
+              `).all(session.completed_at);
+              errorMessages = errorSamples.map(e => e.error_message).filter(Boolean);
+            } catch (e) {
+              // Ignore query errors
+            }
+          }
+          
+          allSessions.push({
+            id: `ringba-sync-${session.sync_date}-${index}`,
+            session_id: `ringba-sync-${session.sync_date}`,
+            service_type: 'ringba-sync',
+            service_name: 'Ringba Sync',
+            service_source: 'ringba-sync',
+            started_at: session.started_at,
+            completed_at: session.completed_at,
+            status: status,
+            calls_scraped: session.total_syncs || 0,
+            adjustments_scraped: session.successful_syncs || 0,
+            error_message: session.failed_syncs > 0 ? 
+              `${session.failed_syncs} syncs failed${errorMessages.length > 0 ? ': ' + errorMessages[0] : ''}` : null,
+            error_samples: errorMessages,
+            // Additional fields
+            calls: session.total_syncs || 0,
+            adjustments: session.successful_syncs || 0,
+            total_syncs: session.total_syncs,
+            successful_syncs: session.successful_syncs,
+            failed_syncs: session.failed_syncs,
+            not_found_syncs: session.not_found_syncs,
+            categories: session.categories
+          });
+        });
+      }
+
+      // 3. Revenue Sync sessions (from revenue_summary updated_at)
+      if (!service || service === 'revenue-sync') {
+        let revenueQuery = `
+          SELECT 
+            date(updated_at) as sync_date,
+            MIN(updated_at) as started_at,
+            MAX(updated_at) as completed_at,
+            COUNT(*) as days_processed
+          FROM revenue_summary
+          WHERE updated_at IS NOT NULL
+        `;
+        
+        revenueQuery += ` GROUP BY date(updated_at) ORDER BY completed_at DESC LIMIT ?`;
+        const revenueSyncSessions = db.prepare(revenueQuery).all(limit);
+
+        revenueSyncSessions.forEach((session, index) => {
+          allSessions.push({
+            id: `revenue-sync-${session.sync_date}-${index}`,
+            session_id: `revenue-sync-${session.sync_date}`,
+            service_type: 'revenue-sync',
+            service_name: 'Revenue Sync',
+            service_source: 'revenue-sync',
+            started_at: session.started_at,
+            completed_at: session.completed_at,
+            status: 'success',
+            calls_scraped: session.days_processed || 0,
+            adjustments_scraped: 0,
+            error_message: null,
+            // Additional fields
+            calls: session.days_processed || 0,
+            adjustments: 0,
+            days_processed: session.days_processed
+          });
+        });
+      }
+
+      // 4. Ringba Cost Sync sessions (from ringba_cost_data updated_at)
+      if (!service || service === 'ringba-cost-sync') {
+        let costQuery = `
+          SELECT 
+            date(updated_at) as sync_date,
+            MIN(updated_at) as started_at,
+            MAX(updated_at) as completed_at,
+            COUNT(*) as calls_processed
+          FROM ringba_cost_data
+          WHERE updated_at IS NOT NULL
+        `;
+        
+        costQuery += ` GROUP BY date(updated_at) ORDER BY completed_at DESC LIMIT ?`;
+        const costSyncSessions = db.prepare(costQuery).all(limit);
+
+        costSyncSessions.forEach((session, index) => {
+          allSessions.push({
+            id: `ringba-cost-sync-${session.sync_date}-${index}`,
+            session_id: `ringba-cost-sync-${session.sync_date}`,
+            service_type: 'ringba-cost-sync',
+            service_name: 'Ringba Cost Sync',
+            service_source: 'ringba-cost-sync',
+            started_at: session.started_at,
+            completed_at: session.completed_at,
+            status: 'success',
+            calls_scraped: session.calls_processed || 0,
+            adjustments_scraped: 0,
+            error_message: null,
+            // Additional fields
+            calls: session.calls_processed || 0,
+            adjustments: 0,
+            calls_processed: session.calls_processed
+          });
+        });
+      }
+
+      // Sort all sessions by started_at (most recent first) and limit
+      allSessions.sort((a, b) => {
+        const dateA = new Date(a.started_at || a.completed_at || 0);
+        const dateB = new Date(b.started_at || b.completed_at || 0);
+        return dateB - dateA;
+      });
+
+      const limitedSessions = allSessions.slice(0, limit);
+
+      sendJSON(res, {
+        sessions: limitedSessions,
+        count: limitedSessions.length,
+        total: allSessions.length
+      });
+    } catch (error) {
+      sendError(res, error.message);
+    } finally {
+      db?.close();
+    }
+  },
+
+  // Service logs endpoint - detailed error logs for debugging
+  '/api/service-logs': (req, res) => {
+    const db = getDb();
+    if (!db) {
+      return sendError(res, 'Database connection failed', 503);
+    }
+
+    try {
+      const queryParams = url.parse(req.url, true).query;
+      const serviceType = queryParams.service || null;
+      const sessionId = queryParams.session_id || null;
+      const status = queryParams.status || null; // 'failed', 'partial', etc.
+      const limit = parseInt(queryParams.limit) || 50;
+
+      const logs = [];
+
+      // 1. Scraping session errors
+      if (!serviceType || serviceType.startsWith('historical') || serviceType.startsWith('current')) {
+        let scrapingQuery = `
+          SELECT 
+            id,
+            session_id,
+            started_at,
+            completed_at,
+            status,
+            error_message,
+            calls_scraped,
+            adjustments_scraped,
+            'scraping' as log_source
+          FROM scraping_sessions
+          WHERE error_message IS NOT NULL
+        `;
+
+        if (sessionId) {
+          scrapingQuery += ` AND session_id = ?`;
+        }
+        if (status) {
+          scrapingQuery += ` AND status = ?`;
+        }
+        if (serviceType === 'historical' || serviceType === 'historical-api') {
+          scrapingQuery += ` AND LOWER(session_id) LIKE '%historical%'`;
+          if (serviceType === 'historical') {
+            scrapingQuery += ` AND LOWER(session_id) NOT LIKE '%api%'`;
+          } else {
+            scrapingQuery += ` AND LOWER(session_id) LIKE '%api%'`;
+          }
+        } else if (serviceType === 'current' || serviceType === 'current-api') {
+          scrapingQuery += ` AND LOWER(session_id) LIKE '%current%'`;
+          if (serviceType === 'current') {
+            scrapingQuery += ` AND LOWER(session_id) NOT LIKE '%api%'`;
+          } else {
+            scrapingQuery += ` AND LOWER(session_id) LIKE '%api%'`;
+          }
+        }
+
+        scrapingQuery += ` ORDER BY started_at DESC LIMIT ?`;
+
+        const params = [];
+        if (sessionId) params.push(sessionId);
+        if (status) params.push(status);
+        params.push(limit);
+
+        const scrapingLogs = db.prepare(scrapingQuery).all(...params);
+        scrapingLogs.forEach(log => {
+          logs.push({
+            id: log.id,
+            session_id: log.session_id,
+            service_type: log.session_id?.toLowerCase().includes('api') ? 
+              (log.session_id?.toLowerCase().includes('historical') ? 'historical-api' : 'current-api') :
+              (log.session_id?.toLowerCase().includes('historical') ? 'historical' : 'current'),
+            log_source: 'scraping',
+            timestamp: log.started_at || log.completed_at,
+            status: log.status,
+            error_message: log.error_message,
+            context: {
+              calls_scraped: log.calls_scraped || 0,
+              adjustments_scraped: log.adjustments_scraped || 0
+            }
+          });
+        });
+      }
+
+      // 2. Ringba Sync errors
+      if (!serviceType || serviceType === 'ringba-sync') {
+        let ringbaQuery = `
+          SELECT 
+            id,
+            campaign_call_id,
+            date_of_call,
+            caller_id,
+            category,
+            sync_status,
+            sync_attempted_at,
+            sync_completed_at,
+            error_message,
+            api_request,
+            api_response,
+            lookup_result
+          FROM ringba_sync_logs
+          WHERE error_message IS NOT NULL
+        `;
+
+        if (status) {
+          ringbaQuery += ` AND sync_status = ?`;
+        }
+
+        ringbaQuery += ` ORDER BY sync_attempted_at DESC LIMIT ?`;
+
+        const params = [];
+        if (status) params.push(status);
+        params.push(limit);
+
+        const ringbaLogs = db.prepare(ringbaQuery).all(...params);
+        ringbaLogs.forEach(log => {
+          // Safely parse JSON fields
+          let apiRequest = null;
+          let apiResponse = null;
+          let lookupResult = null;
+          
+          try {
+            if (log.api_request) apiRequest = JSON.parse(log.api_request);
+          } catch (e) {
+            apiRequest = log.api_request; // Use as string if not valid JSON
+          }
+          
+          try {
+            if (log.api_response) apiResponse = JSON.parse(log.api_response);
+          } catch (e) {
+            apiResponse = log.api_response; // Use as string if not valid JSON
+          }
+          
+          try {
+            if (log.lookup_result) lookupResult = JSON.parse(log.lookup_result);
+          } catch (e) {
+            lookupResult = log.lookup_result; // Use as string if not valid JSON
+          }
+          
+          logs.push({
+            id: log.id,
+            session_id: `ringba-sync-${log.campaign_call_id}`,
+            service_type: 'ringba-sync',
+            log_source: 'ringba-sync',
+            timestamp: log.sync_attempted_at || log.sync_completed_at,
+            status: log.sync_status,
+            error_message: log.error_message,
+            context: {
+              campaign_call_id: log.campaign_call_id,
+              caller_id: log.caller_id,
+              date_of_call: log.date_of_call,
+              category: log.category,
+              api_request: apiRequest,
+              api_response: apiResponse,
+              lookup_result: lookupResult
+            }
+          });
+        });
+      }
+
+      // Sort by timestamp (most recent first)
+      logs.sort((a, b) => {
+        const dateA = new Date(a.timestamp || 0);
+        const dateB = new Date(b.timestamp || 0);
+        return dateB - dateA;
       });
 
       sendJSON(res, {
-        sessions: sessionsWithType,
-        count: sessionsWithType.length
+        logs: logs.slice(0, limit),
+        count: logs.length,
+        filters: {
+          service: serviceType,
+          session_id: sessionId,
+          status: status
+        }
       });
     } catch (error) {
       sendError(res, error.message);

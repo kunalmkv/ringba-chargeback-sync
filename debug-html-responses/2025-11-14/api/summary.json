@@ -1,0 +1,337 @@
+{
+  "category": "API",
+  "date": "2025-11-14",
+  "dateRange": {
+    "start": "11/14/2025",
+    "end": "11/14/2025"
+  },
+  "campaignId": "46775",
+  "pagesFetched": 3,
+  "totalCalls": 45,
+  "totalAdjustments": 0,
+  "totalPayout": 385.5,
+  "savedFiles": [
+    "page-001_calls-45_adjustments-0.html",
+    "page-002_calls-0_adjustments-0.html",
+    "page-003_calls-0_adjustments-0.html",
+    "page-004_calls-0_adjustments-0.html"
+  ],
+  "calls": [
+    {
+      "caller_id": "(510) 541-2498",
+      "date_of_call": "11/14/25 06:59 PM EST",
+      "payout": 0,
+      "classification": "(619) 447-2182",
+      "city_state": "Cynthia J Padilla"
+    },
+    {
+      "caller_id": "(346) 657-9280",
+      "date_of_call": "11/14/25 06:17 PM EST",
+      "payout": 0,
+      "classification": "(404) 884-2222",
+      "city_state": "Donald E Fletcher"
+    },
+    {
+      "caller_id": "(604) 240-6868",
+      "date_of_call": "11/14/25 05:34 PM EST",
+      "payout": 0,
+      "classification": "",
+      "city_state": ""
+    },
+    {
+      "caller_id": "(215) 498-9302",
+      "date_of_call": "11/14/25 05:21 PM EST",
+      "payout": 0,
+      "classification": "(215) 547-5500",
+      "city_state": "Susan P Fithian"
+    },
+    {
+      "caller_id": "(484) 788-1245",
+      "date_of_call": "11/14/25 04:58 PM EST",
+      "payout": 0,
+      "classification": "(215) 547-5500",
+      "city_state": "Felix John Kelly"
+    },
+    {
+      "caller_id": "(713) 302-5150",
+      "date_of_call": "11/14/25 04:45 PM EST",
+      "payout": 0,
+      "classification": "(346) 481-1650",
+      "city_state": "Annie Marie Morales"
+    },
+    {
+      "caller_id": "(917) 449-3289",
+      "date_of_call": "11/14/25 04:08 PM EST",
+      "payout": 0,
+      "classification": "(347) 817-1208",
+      "city_state": "James Temple"
+    },
+    {
+      "caller_id": "(817) 230-9521",
+      "date_of_call": "11/14/25 03:46 PM EST",
+      "payout": 14.4,
+      "classification": "(619) 649-7751",
+      "city_state": "Larry Earl Newton"
+    },
+    {
+      "caller_id": "(442) 500-9630",
+      "date_of_call": "11/14/25 03:44 PM EST",
+      "payout": 0,
+      "classification": "(346) 641-3505",
+      "city_state": "Dylan C Hess"
+    },
+    {
+      "caller_id": "(407) 761-5228",
+      "date_of_call": "11/14/25 03:35 PM EST",
+      "payout": 9,
+      "classification": "(928) 275-6602",
+      "city_state": "Lucinda Ruth Ackerman"
+    },
+    {
+      "caller_id": "(978) 394-6796",
+      "date_of_call": "11/14/25 03:34 PM EST",
+      "payout": 0,
+      "classification": "(781) 692-8202",
+      "city_state": "Matthew S Sudbay"
+    },
+    {
+      "caller_id": "(808) 769-3355",
+      "date_of_call": "11/14/25 03:20 PM EST",
+      "payout": 42,
+      "classification": "(415) 406-2656",
+      "city_state": "Nicole B Awong"
+    },
+    {
+      "caller_id": "(609) 658-4750",
+      "date_of_call": "11/14/25 02:24 PM EST",
+      "payout": 0,
+      "classification": "(323) 284-4050",
+      "city_state": "Joelle Nitzberg Grant"
+    },
+    {
+      "caller_id": "(856) 470-0831",
+      "date_of_call": "11/14/25 01:36 PM EST",
+      "payout": 0,
+      "classification": "(856) 727-0098",
+      "city_state": "Bryce F Marsh"
+    },
+    {
+      "caller_id": "(786) 423-9237",
+      "date_of_call": "11/14/25 01:34 PM EST",
+      "payout": 30,
+      "classification": "(404) 884-2222",
+      "city_state": "Ianthe Keturah Fahie"
+    },
+    {
+      "caller_id": "(210) 744-8288",
+      "date_of_call": "11/14/25 01:34 PM EST",
+      "payout": 33,
+      "classification": "(832) 288-7576",
+      "city_state": "Herbert Lee Abram Sr"
+    },
+    {
+      "caller_id": "(571) 901-4013",
+      "date_of_call": "11/14/25 01:21 PM EST",
+      "payout": 0,
+      "classification": "(703) 289-0900",
+      "city_state": "Mireya D Velasquez"
+    },
+    {
+      "caller_id": "(732) 939-1985",
+      "date_of_call": "11/14/25 01:19 PM EST",
+      "payout": 0,
+      "classification": "(865) 315-6747",
+      "city_state": "Kenneth J Dyer Sr"
+    },
+    {
+      "caller_id": "(786) 593-3809",
+      "date_of_call": "11/14/25 12:47 PM EST",
+      "payout": 23.1,
+      "classification": "",
+      "city_state": ""
+    },
+    {
+      "caller_id": "(904) 962-7578",
+      "date_of_call": "11/14/25 12:47 PM EST",
+      "payout": 0,
+      "classification": "(404) 884-2222",
+      "city_state": "Ny Nguyen"
+    },
+    {
+      "caller_id": "(760) 401-4168",
+      "date_of_call": "11/14/25 12:38 PM EST",
+      "payout": 45,
+      "classification": "(760) 688-0803",
+      "city_state": "Sarah L Barry"
+    },
+    {
+      "caller_id": "(732) 429-8763",
+      "date_of_call": "11/14/25 12:22 PM EST",
+      "payout": 30,
+      "classification": "(865) 315-6747",
+      "city_state": "Giuseppe Lafauc"
+    },
+    {
+      "caller_id": "(305) 308-9358",
+      "date_of_call": "11/14/25 12:22 PM EST",
+      "payout": 24,
+      "classification": "(404) 884-2222",
+      "city_state": "Michael J Pinto"
+    },
+    {
+      "caller_id": "(713) 817-7922",
+      "date_of_call": "11/14/25 12:15 PM EST",
+      "payout": 0,
+      "classification": "(855) 757-3457",
+      "city_state": "Nancy Barnes Copeland"
+    },
+    {
+      "caller_id": "(215) 375-2363",
+      "date_of_call": "11/14/25 12:10 PM EST",
+      "payout": 30,
+      "classification": "(215) 547-5500",
+      "city_state": "William J Mahoney Sr"
+    },
+    {
+      "caller_id": "(571) 969-9677",
+      "date_of_call": "11/14/25 11:49 AM EST",
+      "payout": 0,
+      "classification": "(404) 905-1472",
+      "city_state": "Philippe Jean Barbe"
+    },
+    {
+      "caller_id": "(201) 286-0805",
+      "date_of_call": "11/14/25 11:48 AM EST",
+      "payout": 0,
+      "classification": "(215) 547-5500",
+      "city_state": "Manana Zarkua"
+    },
+    {
+      "caller_id": "(571) 247-8166",
+      "date_of_call": "11/14/25 11:42 AM EST",
+      "payout": 0,
+      "classification": "(336) 329-8049",
+      "city_state": "Nicole Yvonne Flores"
+    },
+    {
+      "caller_id": "(858) 499-9756",
+      "date_of_call": "11/14/25 11:32 AM EST",
+      "payout": 42,
+      "classification": "(619) 694-5692",
+      "city_state": "Jin Z Edwards"
+    },
+    {
+      "caller_id": "(708) 772-8972",
+      "date_of_call": "11/14/25 11:23 AM EST",
+      "payout": 0,
+      "classification": "(312) 975-7187",
+      "city_state": "Gail M Christoffer"
+    },
+    {
+      "caller_id": "(610) 247-4563",
+      "date_of_call": "11/14/25 11:23 AM EST",
+      "payout": 24,
+      "classification": "(215) 547-5500",
+      "city_state": "Barbara A Alleva"
+    },
+    {
+      "caller_id": "(832) 623-5407",
+      "date_of_call": "11/14/25 11:20 AM EST",
+      "payout": 0,
+      "classification": "(323) 284-4050",
+      "city_state": "Craig Anthony Davison"
+    },
+    {
+      "caller_id": "(347) 836-1326",
+      "date_of_call": "11/14/25 11:13 AM EST",
+      "payout": 0,
+      "classification": "(832) 888-0875",
+      "city_state": "Kevin Hodge"
+    },
+    {
+      "caller_id": "(281) 770-5935",
+      "date_of_call": "11/14/25 11:08 AM EST",
+      "payout": 0,
+      "classification": "(346) 641-3505",
+      "city_state": "Craig Patrick Carnes"
+    },
+    {
+      "caller_id": "(202) 423-1463",
+      "date_of_call": "11/14/25 10:53 AM EST",
+      "payout": 0,
+      "classification": "(703) 289-0900",
+      "city_state": "Urja Devani"
+    },
+    {
+      "caller_id": "(704) 785-5342",
+      "date_of_call": "11/14/25 10:48 AM EST",
+      "payout": 39,
+      "classification": "(781) 777-3333",
+      "city_state": "Kathryn Annette Burcham"
+    },
+    {
+      "caller_id": "(330) 734-9395",
+      "date_of_call": "11/14/25 10:39 AM EST",
+      "payout": 0,
+      "classification": "(802) 778-9820",
+      "city_state": "April D Roberts"
+    },
+    {
+      "caller_id": "(945) 536-6575",
+      "date_of_call": "11/14/25 10:36 AM EST",
+      "payout": 0,
+      "classification": "(832) 780-3416",
+      "city_state": "Nyanasegari Bhoo Pathy"
+    },
+    {
+      "caller_id": "(281) 804-9890",
+      "date_of_call": "11/14/25 10:31 AM EST",
+      "payout": 0,
+      "classification": "(832) 606-0613",
+      "city_state": "Susanne E Murray"
+    },
+    {
+      "caller_id": "(904) 240-9517",
+      "date_of_call": "11/14/25 10:24 AM EST",
+      "payout": 0,
+      "classification": "",
+      "city_state": ""
+    },
+    {
+      "caller_id": "(904) 240-9517",
+      "date_of_call": "11/14/25 10:21 AM EST",
+      "payout": 0,
+      "classification": "(404) 884-2222",
+      "city_state": "Martha J Hudson"
+    },
+    {
+      "caller_id": "(615) 507-9493",
+      "date_of_call": "11/14/25 10:19 AM EST",
+      "payout": 0,
+      "classification": "(210) 870-0879",
+      "city_state": "Kathryn Walker Patterson"
+    },
+    {
+      "caller_id": "(516) 495-0505",
+      "date_of_call": "11/14/25 10:01 AM EST",
+      "payout": 0,
+      "classification": "(832) 888-0875",
+      "city_state": "Parbati Shiv"
+    },
+    {
+      "caller_id": "(817) 323-8397",
+      "date_of_call": "11/14/25 10:00 AM EST",
+      "payout": 0,
+      "classification": "(928) 275-6602",
+      "city_state": "Odus Gerald Oglesby"
+    },
+    {
+      "caller_id": "(516) 813-7363",
+      "date_of_call": "11/14/25 09:01 AM EST",
+      "payout": 0,
+      "classification": "(786) 305-5483",
+      "city_state": "Melissa Lebhar"
+    }
+  ],
+  "adjustments": []
+}
