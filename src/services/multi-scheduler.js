@@ -293,6 +293,18 @@ export class MultiScheduler {
   scheduleRingbaCostSync() {
     if (!this.config.ringbaAccountId || !this.config.ringbaApiToken) {
       this.logger.info('Ringba cost sync skipped: credentials missing');
+      // Initialize stats even if disabled so it shows in status
+      this.jobStats.set('ringbaCostSync', {
+        name: 'Ringba Cost Sync (Disabled)',
+        cronExpression: '45 21,0,3,6 * * *',
+        totalRuns: 0,
+        successfulRuns: 0,
+        failedRuns: 0,
+        lastRun: null,
+        nextRun: null,
+        disabled: true,
+        reason: 'Missing Ringba credentials'
+      });
       return E.right(null);
     }
 
@@ -318,7 +330,8 @@ export class MultiScheduler {
       successfulRuns: 0,
       failedRuns: 0,
       lastRun: null,
-      nextRun: this.getNextRunTime(cronExpression)
+      nextRun: this.getNextRunTime(cronExpression),
+      disabled: false
     });
     this.logger.info('Ringba cost sync scheduled', { 
       cron: cronExpression,
@@ -331,7 +344,22 @@ export class MultiScheduler {
   // Schedule Ringba sync service (runs every 3 hours at 22:00, 01:00, 04:00, 07:00 IST)
   scheduleRingbaSync() {
     if (!this.config.ringbaSyncEnabled || !this.config.ringbaAccountId || !this.config.ringbaApiToken) {
-      this.logger.info('Ringba sync skipped: not enabled or credentials missing');
+      const reason = !this.config.ringbaSyncEnabled 
+        ? 'Ringba sync not enabled in config' 
+        : 'Missing Ringba credentials';
+      this.logger.info(`Ringba sync skipped: ${reason}`);
+      // Initialize stats even if disabled so it shows in status
+      this.jobStats.set('ringbaSync', {
+        name: 'Ringba Sync (Disabled)',
+        cronExpression: '0 22,1,4,7 * * *',
+        totalRuns: 0,
+        successfulRuns: 0,
+        failedRuns: 0,
+        lastRun: null,
+        nextRun: null,
+        disabled: true,
+        reason: reason
+      });
       return E.right(null);
     }
 
@@ -357,7 +385,8 @@ export class MultiScheduler {
       successfulRuns: 0,
       failedRuns: 0,
       lastRun: null,
-      nextRun: this.getNextRunTime(cronExpression)
+      nextRun: this.getNextRunTime(cronExpression),
+      disabled: false
     });
     this.logger.info('Ringba sync scheduled', { 
       cron: cronExpression,
@@ -477,7 +506,7 @@ export class MultiScheduler {
     const stats = this.jobStats.get('revenueSync');
     
     if (!stats) {
-      this.logger.error('Revenue sync stats not found');
+      this.logger.error('Revenue sync stats not found - service may not be properly initialized');
       return;
     }
     
@@ -485,23 +514,29 @@ export class MultiScheduler {
     stats.lastRun = new Date().toISOString();
 
     try {
-      this.logger.info(`Running revenue sync job: ${jobId}`);
+      this.logger.info(`[Revenue Sync] Starting job: ${jobId}`);
       const { syncRevenueForLastDays } = await import('./revenue-sync.js');
       const resultEither = await syncRevenueForLastDays(this.config)(10)(); // Last 10 days
       
       if (resultEither._tag === 'Right') {
         const result = resultEither.right;
         stats.successfulRuns++;
-        this.logger.info(`Revenue sync job ${jobId} completed successfully: ${result.daysProcessed} days processed, ${result.matchedCalls} calls matched`);
+        this.logger.info(`[Revenue Sync] Job ${jobId} completed successfully: ${result.daysProcessed} days processed`);
       } else {
         stats.failedRuns++;
         const error = resultEither.left;
         const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
-        this.logger.error(`Revenue sync job ${jobId} failed: ${errorMsg}`);
+        this.logger.error(`[Revenue Sync] Job ${jobId} failed: ${errorMsg}`);
+        console.error(`[Revenue Sync] Full error:`, error);
       }
     } catch (error) {
       stats.failedRuns++;
-      this.logger.error(`Revenue sync job ${jobId} failed with exception: ${error.message}`);
+      const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+      this.logger.error(`[Revenue Sync] Job ${jobId} failed with exception: ${errorMsg}`);
+      console.error(`[Revenue Sync] Exception details:`, error);
+      if (error.stack) {
+        console.error(`[Revenue Sync] Stack trace:`, error.stack);
+      }
     }
   }
 
@@ -511,7 +546,12 @@ export class MultiScheduler {
     const stats = this.jobStats.get('ringbaCostSync');
     
     if (!stats) {
-      this.logger.error('Ringba cost sync stats not found');
+      this.logger.error('Ringba cost sync stats not found - service may not be properly initialized');
+      return;
+    }
+    
+    if (stats.disabled) {
+      this.logger.warn(`Ringba cost sync job ${jobId} skipped: service is disabled (${stats.reason || 'unknown reason'})`);
       return;
     }
     
@@ -519,7 +559,7 @@ export class MultiScheduler {
     stats.lastRun = new Date().toISOString();
 
     try {
-      this.logger.info(`Running Ringba cost sync job: ${jobId}`);
+      this.logger.info(`[Ringba Cost Sync] Starting job: ${jobId}`);
       const { syncRingbaCostDataForToday } = await import('./ringba-cost-sync.js');
       
       // Sync current day only (will skip calls that already exist)
@@ -528,16 +568,22 @@ export class MultiScheduler {
       if (resultEither._tag === 'Right') {
         const result = resultEither.right;
         stats.successfulRuns++;
-        this.logger.info(`Ringba cost sync job ${jobId} completed successfully: ${result.summary.totalCalls} new calls processed, ${result.summary.saved.inserted} inserted, ${result.summary.skippedCalls || 0} existing calls skipped`);
+        this.logger.info(`[Ringba Cost Sync] Job ${jobId} completed successfully: ${result.summary?.totalCalls || 0} new calls processed, ${result.summary?.saved?.inserted || 0} inserted, ${result.summary?.skippedCalls || 0} existing calls skipped`);
       } else {
         stats.failedRuns++;
         const error = resultEither.left;
         const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
-        this.logger.error(`Ringba cost sync job ${jobId} failed: ${errorMsg}`);
+        this.logger.error(`[Ringba Cost Sync] Job ${jobId} failed: ${errorMsg}`);
+        console.error(`[Ringba Cost Sync] Full error:`, error);
       }
     } catch (error) {
       stats.failedRuns++;
-      this.logger.error(`Ringba cost sync job ${jobId} failed with exception: ${error.message}`);
+      const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+      this.logger.error(`[Ringba Cost Sync] Job ${jobId} failed with exception: ${errorMsg}`);
+      console.error(`[Ringba Cost Sync] Exception details:`, error);
+      if (error.stack) {
+        console.error(`[Ringba Cost Sync] Stack trace:`, error.stack);
+      }
     }
   }
 
@@ -547,7 +593,12 @@ export class MultiScheduler {
     const stats = this.jobStats.get('ringbaSync');
     
     if (!stats) {
-      this.logger.error('Ringba sync stats not found');
+      this.logger.error('Ringba sync stats not found - service may not be properly initialized');
+      return;
+    }
+    
+    if (stats.disabled) {
+      this.logger.warn(`Ringba sync job ${jobId} skipped: service is disabled (${stats.reason || 'unknown reason'})`);
       return;
     }
     
@@ -555,22 +606,28 @@ export class MultiScheduler {
     stats.lastRun = new Date().toISOString();
 
     try {
-      this.logger.info(`Running Ringba sync job: ${jobId}`);
+      this.logger.info(`[Ringba Sync] Starting job: ${jobId}`);
       const resultEither = await syncAdjustmentsToRingba(this.config)(null)(); // null = all categories
       
       if (resultEither._tag === 'Right') {
         const result = resultEither.right;
         stats.successfulRuns++;
-        this.logger.info(`Ringba sync job ${jobId} completed successfully: ${result.synced} synced, ${result.failed} failed, ${result.skipped} skipped`);
+        this.logger.info(`[Ringba Sync] Job ${jobId} completed successfully: ${result.synced || 0} synced, ${result.failed || 0} failed, ${result.skipped || 0} skipped`);
       } else {
         stats.failedRuns++;
         const error = resultEither.left;
         const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
-        this.logger.error(`Ringba sync job ${jobId} failed: ${errorMsg}`);
+        this.logger.error(`[Ringba Sync] Job ${jobId} failed: ${errorMsg}`);
+        console.error(`[Ringba Sync] Full error:`, error);
       }
     } catch (error) {
       stats.failedRuns++;
-      this.logger.error(`Ringba sync job ${jobId} failed with exception: ${error.message}`);
+      const errorMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+      this.logger.error(`[Ringba Sync] Job ${jobId} failed with exception: ${errorMsg}`);
+      console.error(`[Ringba Sync] Exception details:`, error);
+      if (error.stack) {
+        console.error(`[Ringba Sync] Stack trace:`, error.stack);
+      }
     }
   }
 
@@ -595,10 +652,47 @@ export class MultiScheduler {
       return E.left(new Error('Failed to schedule services'));
     }
 
-    // Start both tasks
+    // Start all scheduled tasks (skip null/disabled tasks)
+    const startedServices = [];
+    const skippedServices = [];
+    
     for (const [name, task] of this.scheduledTasks.entries()) {
-      task.start();
-      this.logger.info(`Started ${name} service`);
+      if (task && typeof task.start === 'function') {
+        try {
+          task.start();
+          const stats = this.jobStats.get(name);
+          const nextRun = stats?.nextRun ? new Date(stats.nextRun).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }) : 'unknown';
+          this.logger.info(`✅ Started ${name} service (next run: ${nextRun} IST)`);
+          startedServices.push(name);
+        } catch (error) {
+          this.logger.error(`❌ Failed to start ${name} service: ${error.message}`);
+          skippedServices.push({ name, reason: error.message });
+        }
+      } else {
+        this.logger.warn(`⚠️ Skipping ${name} service: task is null or invalid`);
+        skippedServices.push({ name, reason: 'task is null or invalid' });
+      }
+    }
+    
+    // Log which services are enabled/disabled
+    const enabledServices = Array.from(this.scheduledTasks.keys());
+    const disabledServices = Array.from(this.jobStats.keys())
+      .filter(name => this.jobStats.get(name)?.disabled);
+    
+    this.logger.info(`📊 Service Summary:`);
+    this.logger.info(`   ✅ Started: ${startedServices.length} services (${startedServices.join(', ')})`);
+    if (disabledServices.length > 0) {
+      this.logger.info(`   ⚠️ Disabled: ${disabledServices.length} services (${disabledServices.join(', ')})`);
+      disabledServices.forEach(name => {
+        const stats = this.jobStats.get(name);
+        this.logger.info(`      - ${name}: ${stats?.reason || 'unknown reason'}`);
+      });
+    }
+    if (skippedServices.length > 0) {
+      this.logger.info(`   ❌ Skipped: ${skippedServices.length} services`);
+      skippedServices.forEach(({ name, reason }) => {
+        this.logger.info(`      - ${name}: ${reason}`);
+      });
     }
 
     this.isRunning = true;
@@ -635,7 +729,7 @@ export class MultiScheduler {
     };
 
     for (const [name, stats] of this.jobStats.entries()) {
-      status.services.push({
+      const serviceStatus = {
         name: stats.name,
         cron: stats.cronExpression,
         totalRuns: stats.totalRuns,
@@ -646,7 +740,25 @@ export class MultiScheduler {
           : '0%',
         lastRun: stats.lastRun,
         nextRun: stats.nextRun
-      });
+      };
+      
+      // Add disabled status if applicable
+      if (stats.disabled) {
+        serviceStatus.disabled = true;
+        serviceStatus.reason = stats.reason || 'Service disabled';
+      }
+      
+      // Add task status
+      const task = this.scheduledTasks.get(name);
+      if (task) {
+        serviceStatus.taskStatus = 'scheduled';
+      } else if (stats.disabled) {
+        serviceStatus.taskStatus = 'disabled';
+      } else {
+        serviceStatus.taskStatus = 'not_scheduled';
+      }
+      
+      status.services.push(serviceStatus);
     }
 
     return status;
