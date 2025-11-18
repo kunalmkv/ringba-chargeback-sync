@@ -107,6 +107,8 @@ videos/
 tmp/
 temp/
 
+# Auth and session files
+data/auth_session.json
 
-
+# Database files
 data/elocal_scraper.db

@@ -11,14 +11,22 @@ import { findCallByCallerIdAndTime, updateCallPayment, resolvePaymentLegs } from
 // For API category: all rows (need to check payout against Ringba)
 const getPendingSyncRows = (config) => (category = null) =>
   withDatabase(config)(async (db) => {
+    // Check if revenue column exists in the table
+    const tableInfo = db.prepare(`PRAGMA table_info(elocal_call_data)`).all();
+    const hasRevenueColumn = tableInfo.some(col => col.name === 'revenue');
+    
     let query = '';       
     let params = [];
     
+    // Build SELECT clause - include revenue only if column exists
+    const revenueSelect = hasRevenueColumn ? ', revenue' : '';
+    
     if (category === 'API') {
       // API category: sync all rows to ensure payout matches Ringba
+      // Select both payout and revenue (if revenue column exists) to handle cases where one might be null
       query = `
         SELECT 
-          id, date_of_call, campaign_phone, caller_id, payout,
+          id, date_of_call, campaign_phone, caller_id, payout${revenueSelect},
           adjustment_amount, adjustment_classification, category,
           ringba_inbound_call_id, ringba_sync_status
         FROM elocal_call_data
@@ -36,9 +44,10 @@ const getPendingSyncRows = (config) => (category = null) =>
       // This includes:
       // 1. Rows with adjustments (chargebacks, refunds, modifications) - always sync
       // 2. All rows without adjustments that haven't been synced yet (to check for payout mismatches with Ringba, similar to API category)
+      // Select both payout and revenue (if revenue column exists) to handle cases where one might be null
       query = `
         SELECT 
-          id, date_of_call, campaign_phone, caller_id, payout,
+          id, date_of_call, campaign_phone, caller_id, payout${revenueSelect},
           adjustment_amount, adjustment_classification, category,
           ringba_inbound_call_id, ringba_sync_status
         FROM elocal_call_data
@@ -60,9 +69,10 @@ const getPendingSyncRows = (config) => (category = null) =>
       // Default: both categories (backward compatibility)
       // STATIC: rows with adjustments OR all rows (for payout verification)
       // API: all rows (for payout verification)
+      // Select both payout and revenue (if revenue column exists) to handle cases where one might be null
       query = `
         SELECT 
-          id, date_of_call, campaign_phone, caller_id, payout,
+          id, date_of_call, campaign_phone, caller_id, payout${revenueSelect},
           adjustment_amount, adjustment_classification, category,
           ringba_inbound_call_id, ringba_sync_status
         FROM elocal_call_data
@@ -245,10 +255,62 @@ const syncRowToRingba = (config) => (row) =>
       
       console.log(`[Ringba] Current values: revenue=$${currentRevenue}, payout=$${currentPayout}, revenue leg connected=${isConnected}`);
       
-      // Step 2b: Use payout value directly from database row
-      // For STATIC category: Use payout from row (may have been adjusted or verified during scraping)
-      // For API category: Use payout from row (fetched from Ringba during scraping, but may have changed)
-      const payoutValue = Math.max(0, Number(row.payout || 0));
+      // Step 2b: Get value from database row - handle null/undefined/empty values
+      // CRITICAL LOGIC: Use whichever value exists (payout or revenue) for BOTH revenue and payout
+      // - If payout exists (not null), use payout for both
+      // - If payout is null but revenue exists, use revenue for both
+      // - If both are null, use 0 for both
+      // This ensures both revenue and payout are ALWAYS set to the same value
+      const getValueFromRow = (value) => {
+        // Handle null, undefined, or empty string first
+        if (value === null || value === undefined || value === '') {
+          return null; // Return null to indicate value doesn't exist
+        }
+        // Convert to number and check if valid
+        const numValue = Number(value);
+        // If conversion results in NaN, return null
+        if (isNaN(numValue)) {
+          return null;
+        }
+        // Return the valid number (can be negative, zero, or positive)
+        return numValue;
+      };
+      
+      // Get both payout and revenue from database (handle null/undefined/empty)
+      // Note: row.revenue may be null if revenue column doesn't exist, or if it's actually null
+      const dbPayout = getValueFromRow(row.payout);
+      const dbRevenue = getValueFromRow(row.revenue); // May be null if column doesn't exist or is null
+      
+      // CRITICAL: Use whichever value exists for BOTH revenue and payout
+      // Priority: payout > revenue > 0
+      // If payout exists, use it for both
+      // If payout is null but revenue exists, use revenue for both
+      // If both are null, use 0 for both
+      let valueToUse;
+      let valueSource;
+      
+      if (dbPayout !== null) {
+        valueToUse = dbPayout;
+        valueSource = 'payout';
+      } else if (dbRevenue !== null) {
+        valueToUse = dbRevenue;
+        valueSource = 'revenue';
+      } else {
+        valueToUse = 0;
+        valueSource = 'default (both null)';
+      }
+      
+      // Log which value is being used (for debugging)
+      if (dbPayout === null && dbRevenue !== null) {
+        console.log(`[Ringba] Database payout is null for row ${row.id}, using revenue value ($${valueToUse}) for both revenue and payout`);
+      } else if (dbRevenue === null && dbPayout !== null) {
+        console.log(`[Ringba] Database revenue is null for row ${row.id}, using payout value ($${valueToUse}) for both revenue and payout`);
+      } else if (dbPayout === null && dbRevenue === null) {
+        console.log(`[Ringba] Database payout and revenue are both null for row ${row.id}, using 0 for both revenue and payout`);
+      }
+      
+      // This value will be used for BOTH revenue and payout
+      const payoutValue = valueToUse;
       
       // For API and STATIC categories: Compare with Ringba payout to see if update is needed
       // If payout matches and there's no adjustment, skip the update
@@ -270,6 +332,11 @@ const syncRowToRingba = (config) => (row) =>
             payoutDiff: payoutDiff
           }))();
           
+          // Even when skipping update, ensure both revenue and payout are set to same value from database
+          // This maintains consistency: both values should always be the same
+          const skippedRevenue = payoutValue; // Use database value for both
+          const skippedPayout = payoutValue; // Use database value for both
+          
           // Log successful check (even though no update was needed)
           await TE.getOrElse(() => T.of(null))(logRingbaSyncAttempt(config)({
             campaignCallId: row.id,
@@ -280,8 +347,8 @@ const syncRowToRingba = (config) => (row) =>
             adjustmentClassification: row.adjustment_classification,
             ringbaInboundCallId: inboundCallId,
             syncStatus: 'success',
-            revenue: currentRevenue,
-            payout: currentRingbaPayout,
+            revenue: skippedRevenue, // Use database value (same as payout)
+            payout: skippedPayout,   // Use database value
             lookupResult,
             apiRequest: { message: 'No update needed - payout matches' },
             apiResponse: { skipped: 'payout_matches' }
@@ -290,8 +357,8 @@ const syncRowToRingba = (config) => (row) =>
           return {
             rowId: row.id,
             inboundCallId,
-            revenue: currentRevenue,
-            payout: currentRingbaPayout,
+            revenue: skippedRevenue, // Both set to same value from database
+            payout: skippedPayout,   // Both set to same value from database
             status: 'success',
             isMultiLeg,
             isConnected,
@@ -305,16 +372,30 @@ const syncRowToRingba = (config) => (row) =>
       }
       
       // Set both revenue and payout to the same value from database
+      // CRITICAL: Even if payout is null/undefined/empty in DB, we still use that value (0) for BOTH
+      // This ensures both revenue and payout are ALWAYS the same value, regardless of what's in the database
+      // If database has null for payout, both revenue and payout will be set to 0
+      // If database has a value for payout, both revenue and payout will be set to that same value
       const newPayout = payoutValue;
-      const newRevenue = payoutValue; // Same as payout
+      const newRevenue = payoutValue; // Always same as payout - even if payout is null/0/absent
       
       // Snap tiny float residue to exact zeros (fix floating-point precision issues)
       const isZeroish = (n, eps = 0.005) => Math.abs(n) < eps;
       finalPayout = isZeroish(newPayout) ? 0 : newPayout;
       finalRevenue = isZeroish(newRevenue) ? 0 : newRevenue;
       
-      console.log(`[Ringba] Using payout from database: $${finalPayout}`);
-      console.log(`[Ringba] New values: revenue=$${finalRevenue}, payout=$${finalPayout} (both set to same value)`);
+      // CRITICAL: Force both to be exactly the same (in case of any rounding or edge cases)
+      // This is the key guarantee: both revenue and payout are ALWAYS identical
+      finalRevenue = finalPayout; // Force both to be identical
+      
+      // Log the value being used (helpful for debugging null cases)
+      const dbValueStatus = valueSource === 'payout' 
+        ? ' (from payout column)'
+        : valueSource === 'revenue'
+        ? ' (from revenue column, payout was null)'
+        : ' (both null, using default 0)';
+      console.log(`[Ringba] Using value from database${dbValueStatus}: $${finalPayout}`);
+      console.log(`[Ringba] New values: revenue=$${finalRevenue}, payout=$${finalPayout} (both set to same value: $${finalPayout})`);
       
       // Step 2c: Update each leg with correct amounts
       // CRITICAL: Never send newConversionAmount for non-connected calls
@@ -326,21 +407,17 @@ const syncRowToRingba = (config) => (row) =>
       const isSameLeg = payoutLegId === revenueLegId;
       
       if (isSameLeg) {
-        // Single leg: Update both payout and revenue together (if connected)
+        // Single leg: Update both payout and revenue together
         // Always use /calls/payments/override endpoint (even for zero values)
-        const payload = { reason: 'Call payments adjusted by eLocal sync service.' };
+        // Always send both revenue and payout to the same value, even if call is not connected
+        // (Ringba may reject revenue update for non-connected calls, but we still try)
+        const payload = { 
+          reason: 'Call payments adjusted by eLocal sync service.',
+          newConversionAmount: Number(finalRevenue), // Always include revenue
+          newPayoutAmount: Number(finalPayout)        // Always include payout
+        };
         
-        // Update both payout and revenue to the same value (if connected)
-        if (isConnected) {
-          // Connected: can update both revenue and payout
-          payload.newConversionAmount = Number(finalRevenue);
-          payload.newPayoutAmount = Number(finalPayout);
-          console.log(`[Ringba] Updating single leg ${payoutLegId}: revenue=$${finalRevenue}, payout=$${finalPayout} (connected)`);
-        } else {
-          // Not connected: only update payout (omit revenue to avoid Ringba ignoring the update)
-          payload.newPayoutAmount = Number(finalPayout);
-          console.log(`[Ringba] Updating single leg ${payoutLegId}: payout=$${finalPayout} only (not connected, skipping revenue)`);
-        }
+        console.log(`[Ringba] Updating single leg ${payoutLegId}: revenue=$${finalRevenue}, payout=$${finalPayout} (both same${isConnected ? ', connected' : ', not connected - Ringba may reject revenue update'})`);
         
         apiRequest = {
           url: `POST /v2/${accountId}/calls/payments/override`,
@@ -353,25 +430,58 @@ const syncRowToRingba = (config) => (row) =>
         
         if (updateEither._tag === 'Left') {
           const error = updateEither.left;
-          const errorMsg = `Update single leg failed: ${error.message || error}`;
-          await TE.getOrElse(() => T.of(null))(logRingbaSyncAttempt(config)({
-            campaignCallId: row.id,
-            dateOfCall: row.date_of_call,
-            callerId: row.caller_id,
-            category: row.category,
-            adjustmentAmount: row.adjustment_amount,
-            adjustmentClassification: row.adjustment_classification,
-            ringbaInboundCallId: inboundCallId,
-            syncStatus: 'failed',
-            revenue: finalRevenue,
-            payout: finalPayout,
-            lookupResult: { ...lookupResult, currentRevenue, currentPayout },
-            apiRequest: apiRequests,
-            errorMessage: errorMsg
-          }))();
-          throw new Error(errorMsg);
+          // If call is not connected and Ringba rejects revenue update, try with payout only
+          if (!isConnected && (error.message?.includes('not connected') || error.message?.includes('revenue') || error.message?.includes('conversion'))) {
+            console.log(`[Ringba] Revenue update rejected for non-connected call, retrying with payout only: ${error.message}`);
+            // Retry with payout only
+            const payoutOnlyPayload = {
+              reason: 'Call payments adjusted by eLocal sync service.',
+              newPayoutAmount: Number(finalPayout)
+            };
+            const retryEither = await updateCallPayment(accountId, apiToken)(payoutLegId, payoutOnlyPayload)();
+            if (retryEither._tag === 'Left') {
+              const retryError = retryEither.left;
+              const errorMsg = `Update single leg failed (payout only): ${retryError.message || retryError}`;
+              await TE.getOrElse(() => T.of(null))(logRingbaSyncAttempt(config)({
+                campaignCallId: row.id,
+                dateOfCall: row.date_of_call,
+                callerId: row.caller_id,
+                category: row.category,
+                adjustmentAmount: row.adjustment_amount,
+                adjustmentClassification: row.adjustment_classification,
+                ringbaInboundCallId: inboundCallId,
+                syncStatus: 'failed',
+                revenue: finalRevenue,
+                payout: finalPayout,
+                lookupResult: { ...lookupResult, currentRevenue, currentPayout },
+                apiRequest: apiRequests,
+                errorMessage: errorMsg
+              }))();
+              throw new Error(errorMsg);
+            }
+            updateResults.push({ leg: 'both', result: retryEither.right, revenueSkipped: 'not connected' });
+          } else {
+            const errorMsg = `Update single leg failed: ${error.message || error}`;
+            await TE.getOrElse(() => T.of(null))(logRingbaSyncAttempt(config)({
+              campaignCallId: row.id,
+              dateOfCall: row.date_of_call,
+              callerId: row.caller_id,
+              category: row.category,
+              adjustmentAmount: row.adjustment_amount,
+              adjustmentClassification: row.adjustment_classification,
+              ringbaInboundCallId: inboundCallId,
+              syncStatus: 'failed',
+              revenue: finalRevenue,
+              payout: finalPayout,
+              lookupResult: { ...lookupResult, currentRevenue, currentPayout },
+              apiRequest: apiRequests,
+              errorMessage: errorMsg
+            }))();
+            throw new Error(errorMsg);
+          }
+        } else {
+          updateResults.push({ leg: 'both', result: updateEither.right });
         }
-        updateResults.push({ leg: 'both', result: updateEither.right });
       } else {
         // Multi-leg: Update payout and revenue on separate legs
         console.log(`[Ringba] Multi-leg call detected - updating payout and revenue separately`);
@@ -414,25 +524,31 @@ const syncRowToRingba = (config) => (row) =>
         }
         updateResults.push({ leg: 'payout', result: payoutUpdateEither.right });
         
-        // Update revenue leg ONLY if connected
-        // CRITICAL: Never send newConversionAmount for non-connected calls
-        if (isConnected) {
-          console.log(`[Ringba] Updating revenue leg ${revenueLegId} to $${finalRevenue} (connected call)...`);
-          apiRequest = {
-            url: `POST /v2/${accountId}/calls/payments/override`,
-            inboundCallId: revenueLegId,
-            newConversionAmount: Number(finalRevenue),
-            reason: 'Call payments adjusted by eLocal sync service.'
-          };
-          apiRequests.push(apiRequest);
-          
-          const revenueUpdateEither = await updateCallPayment(accountId, apiToken)(revenueLegId, {
-            newConversionAmount: Number(finalRevenue),
-            reason: 'Call payments adjusted by eLocal sync service.'
-          })();
-          
-          if (revenueUpdateEither._tag === 'Left') {
-            const error = revenueUpdateEither.left;
+        // Update revenue leg to same value as payout
+        // Always set both to the same value from database, even if one was absent
+        // Always try to update revenue, even if call is not connected (Ringba may reject it, but we try)
+        console.log(`[Ringba] Updating revenue leg ${revenueLegId} to $${finalRevenue} (same as payout${isConnected ? ', connected call' : ', not connected - Ringba may reject'})...`);
+        apiRequest = {
+          url: `POST /v2/${accountId}/calls/payments/override`,
+          inboundCallId: revenueLegId,
+          newConversionAmount: Number(finalRevenue),
+          reason: 'Call payments adjusted by eLocal sync service.'
+        };
+        apiRequests.push(apiRequest);
+        
+        const revenueUpdateEither = await updateCallPayment(accountId, apiToken)(revenueLegId, {
+          newConversionAmount: Number(finalRevenue),
+          reason: 'Call payments adjusted by eLocal sync service.'
+        })();
+        
+        if (revenueUpdateEither._tag === 'Left') {
+          const error = revenueUpdateEither.left;
+          // If call is not connected and Ringba rejects revenue update, log warning but don't fail
+          // This is expected behavior for non-connected calls
+          if (!isConnected && (error.message?.includes('not connected') || error.message?.includes('revenue'))) {
+            console.log(`[Ringba] Revenue update rejected for non-connected call (expected): ${error.message}`);
+            updateResults.push({ leg: 'revenue', skipped: 'not connected', error: error.message });
+          } else {
             const errorMsg = `Update revenue leg failed: ${error.message || error}`;
             await TE.getOrElse(() => T.of(null))(logRingbaSyncAttempt(config)({
               campaignCallId: row.id,
@@ -451,10 +567,8 @@ const syncRowToRingba = (config) => (row) =>
             }))();
             throw new Error(errorMsg);
           }
-          updateResults.push({ leg: 'revenue', result: revenueUpdateEither.right });
         } else {
-          // Not connected - DO NOT send revenue update
-          console.log(`[Ringba] Skipping revenue update for ${revenueLegId}: call not connected (Ringba will ignore revenue on non-connected calls)`);
+          updateResults.push({ leg: 'revenue', result: revenueUpdateEither.right });
         }
       }
       
@@ -462,14 +576,18 @@ const syncRowToRingba = (config) => (row) =>
         isSameLeg,
         isMultiLeg,
         payoutLeg: { id: payoutLegId, result: updateResults.find(r => r.leg === 'payout' || r.leg === 'both')?.result },
-        revenueLeg: isConnected 
-          ? { id: revenueLegId, result: updateResults.find(r => r.leg === 'revenue' || r.leg === 'both')?.result } 
-          : { id: revenueLegId, skipped: 'not connected' }
+        revenueLeg: { 
+          id: revenueLegId, 
+          result: updateResults.find(r => r.leg === 'revenue' || r.leg === 'both')?.result,
+          skipped: updateResults.find(r => r.leg === 'revenue' || r.leg === 'both')?.skipped || null
+        }
       };
       
-      // Set final values
-      finalRevenue = isConnected ? finalRevenue : currentRevenue; // Don't claim to update revenue if call wasn't connected
-      finalPayout = finalPayout; // Payout updated from database row
+      // Set final values - both always set to same value from database
+      // Even if revenue couldn't be updated in Ringba (not connected), we still record both as same value
+      // This ensures consistency: both revenue and payout are always the same value from DB
+      finalRevenue = finalPayout; // Always same as payout (from database)
+      finalPayout = finalPayout; // From database row
 
       // Step 3: Mark as synced and log success
       await TE.getOrElse(() => T.of(null))(updateSyncStatus(config)(row.id)('success', inboundCallId, updateResult))();

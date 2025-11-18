@@ -29,7 +29,8 @@
     "test:postgres": "node test-postgres-connection.js",
     "get-campaign-info": "node get-campaign-info.js",
     "get-calls-by-target": "node get-calls-by-target.js",
-    "ringba-cost-sync": "node src/index.js ringba-cost-sync"
+    "ringba-cost-sync": "node src/index.js ringba-cost-sync",
+    "test:ringba-sync": "node test-ringba-sync-update.js"
   },
   "keywords": [
     "scraping",
