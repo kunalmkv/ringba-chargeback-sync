@@ -12,8 +12,34 @@ export const refreshAuthSession = (config) =>
       console.log('[Auth Refresh] Starting auth session refresh...');
       
       // Launch browser in headless mode for Ubuntu server
-      // No executablePath specified - Puppeteer will use bundled Chromium
-      const browser = await puppeteer.launch({
+      // Try to use system Chromium first, fallback to Puppeteer's bundled Chromium
+      const fs = await import('fs');
+      const possiblePaths = [
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/snap/bin/chromium'
+      ];
+      
+      let executablePath = undefined;
+      for (const path of possiblePaths) {
+        try {
+          if (fs.existsSync(path)) {
+            executablePath = path;
+            console.log(`[Auth Refresh] Using system browser: ${path}`);
+            break;
+          }
+        } catch (e) {
+          // Continue to next path
+        }
+      }
+      
+      if (!executablePath) {
+        console.log('[Auth Refresh] Using Puppeteer bundled Chromium (system browser not found)');
+      }
+      
+      const launchOptions = {
         headless: "new",
         args: [
           "--no-sandbox",
@@ -24,7 +50,14 @@ export const refreshAuthSession = (config) =>
           "--no-zygote",
           "--disable-gpu",
         ],
-      });
+      };
+      
+      // Only set executablePath if system browser found
+      if (executablePath) {
+        launchOptions.executablePath = executablePath;
+      }
+      
+      const browser = await puppeteer.launch(launchOptions);
       
       try {
         const page = await browser.newPage();
